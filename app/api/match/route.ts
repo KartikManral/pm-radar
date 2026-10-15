@@ -44,6 +44,11 @@ export async function POST(req: Request) {
     console.error("[match]", msg);
     if (msg === "NO_KEY")
       return NextResponse.json({ error: "The AI match isn't set up yet: add GEMINI_API_KEY." }, { status: 503 });
+    if (msg === "BUSY")
+      return NextResponse.json(
+        { error: "Google's AI is very busy right now. Wait a minute and click Try again." },
+        { status: 503 }
+      );
     if (msg === "RATE_LIMIT")
       return NextResponse.json(
         { error: "Lots of people are checking matches right now. Try again in a minute." },

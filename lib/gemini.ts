@@ -1,8 +1,18 @@
 import type { MatchResult } from "./types";
 
-// "gemini-flash-latest" always points at Google's current Flash model,
-// which is on the free tier. Override with GEMINI_MODEL if you want.
-const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+// Free-tier models to try, in order. If one is busy (503) or unavailable,
+// the next one is used. Put your own first with GEMINI_MODEL if you want.
+const MODELS = [
+  process.env.GEMINI_MODEL,
+  "gemini-flash-latest",
+  "gemini-flash-lite-latest",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+].filter((m, i, all): m is string => Boolean(m) && all.indexOf(m) === i);
+
+// Errors worth retrying on another model: busy, overloaded, or model not found.
+const RETRYABLE = new Set([404, 429, 500, 502, 503, 504]);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const schema = {
   type: "OBJECT",
@@ -63,30 +73,42 @@ export async function analyzeMatch(
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("NO_KEY");
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-    {
+  const body = JSON.stringify({
+    contents: [{ role: "user", parts: [{ text: buildPrompt(resume, job) }] }],
+    generationConfig: {
+      temperature: 0.3,
+      responseMimeType: "application/json",
+      responseSchema: schema,
+    },
+  });
+
+  let res: Response | null = null;
+  let lastStatus = 0;
+  const started = Date.now();
+  for (const [i, model] of MODELS.entries()) {
+    if (Date.now() - started > 40_000) break; // stay inside the function time limit
+    if (i > 0) await sleep(800);
+    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: buildPrompt(resume, job) }] }],
-        generationConfig: {
-          temperature: 0.3,
-          responseMimeType: "application/json",
-          responseSchema: schema,
-        },
-      }),
-      signal: AbortSignal.timeout(55_000),
-    }
-  );
+      body,
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (res.ok) break;
+    lastStatus = res.status;
+    const detail = (await res.text()).slice(0, 300);
+    console.warn(`[match] ${model} returned ${res.status}: ${detail}`);
+    if (!RETRYABLE.has(res.status)) throw new Error(`Gemini ${res.status}: ${detail}`);
+    res = null;
+  }
 
-  if (res.status === 429) throw new Error("RATE_LIMIT");
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  if (!res) throw new Error(lastStatus === 429 ? "RATE_LIMIT" : "BUSY");
 
   const data = await res.json();
   const text: string =
     data.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("") ?? "";
-  const parsed = JSON.parse(text) as MatchResult;
+  // Some models wrap JSON in ```json fences; strip them before parsing.
+  const parsed = JSON.parse(text.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, "")) as MatchResult;
 
   // Keep the output tidy even if the model over-delivers.
   parsed.score = Math.max(0, Math.min(100, Math.round(parsed.score)));
