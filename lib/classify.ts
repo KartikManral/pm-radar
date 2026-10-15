@@ -28,7 +28,7 @@ export function levelFor(title: string): Level {
 }
 
 const INDIA =
-  /\b(india|bengaluru|bangalore|mumbai|pune|hyderabad|gurugram|gurgaon|noida|delhi|new delhi|ncr|chennai|kolkata|ahmedabad|jaipur|kochi|chandigarh|indore|coimbatore|thiruvananthapuram)\b/i;
+  /\b(india|bengaluru|bangalore|mumbai|pune|hyderabad|gurugram|gurgaon|noida|delhi|new delhi|ncr|chennai|kolkata|ahmedabad|jaipur|kochi|chandigarh|indore|coimbatore|thiruvananthapuram|trivandrum|mysore|mysuru|mangalore|vizag|visakhapatnam|bhubaneswar|lucknow|nagpur|surat|vadodara|navi mumbai|thane|karnataka|maharashtra|telangana|tamil nadu|haryana|uttar pradesh|kerala|gujarat|rajasthan|west bengal|delhi ncr)\b/i;
 const REMOTE = /\b(remote|anywhere|worldwide|work from home|wfh|distributed)\b/i;
 const OPEN_TO_INDIA = /\b(india|apac|asia|worldwide|anywhere|global|international)\b/i;
 

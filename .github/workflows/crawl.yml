@@ -1,0 +1,36 @@
+name: Crawl jobs
+
+on:
+  schedule:
+    # Every 4 hours (times are UTC).
+    - cron: "17 */4 * * *"
+  workflow_dispatch:
+    inputs:
+      discovery:
+        description: "Search for Indian companies' job boards now (normally weekly)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: crawl
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Crawl
+        run: npx --yes tsx@4 scripts/crawl.ts
+        env:
+          KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
+          KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          FORCE_DISCOVERY: ${{ inputs.discovery && '1' || '0' }}

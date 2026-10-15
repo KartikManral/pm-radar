@@ -7,7 +7,10 @@ export type SourceId =
   | "ashby"
   | "remotive"
   | "remoteok"
-  | "himalayas";
+  | "himalayas"
+  | "adzuna"
+  | "workable"
+  | "smartrecruiters";
 
 /** What the browser receives: small, no descriptions. */
 export type Job = {
@@ -55,4 +58,7 @@ export const SOURCE_LABELS: Record<SourceId, string> = {
   remotive: "Remotive",
   remoteok: "Remote OK",
   himalayas: "Himalayas",
+  adzuna: "Adzuna",
+  workable: "Workable",
+  smartrecruiters: "SmartRecruiters",
 };

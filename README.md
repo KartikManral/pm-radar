@@ -38,6 +38,7 @@ Open http://localhost:3000
 | What | Where | Env vars |
 |---|---|---|
 | Gemini API key | https://aistudio.google.com/apikey | `GEMINI_API_KEY` |
+| Adzuna key (Indian job sites, optional but adds most roles) | Sign up at https://developer.adzuna.com, then open your dashboard | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` |
 | Redis (stores email subscribers) | Vercel dashboard > Storage > Marketplace > **Upstash for Redis** > connect to this project | filled in for you |
 | Gmail app password (sends emails) | Turn on 2-Step Verification, then https://myaccount.google.com/apppasswords | `SMTP_USER`, `SMTP_PASS` |
 | Cron secret | Any long random string, e.g. from https://1password.com/password-generator | `CRON_SECRET` |
@@ -70,7 +71,32 @@ Open `lib/config.ts`. Find a company's careers page and look at the URL:
 - `jobs.lever.co/acme` > `{ name: "Acme", ats: "lever", board: "acme" }`
 - `jobs.ashbyhq.com/acme` > `{ name: "Acme", ats: "ashby", board: "acme" }`
 
-A wrong name is skipped automatically (check Vercel logs for `[jobs] ... failed`), so it never breaks the site. Indian startups that hire APMs are the highest-value additions.
+A wrong name is skipped automatically, so it never breaks the site. Open `/api/sources` on your site to see which sources worked and how many roles each one found. Indian startups that hire APMs are the highest-value additions.
+
+## 4b. The job crawler (more roles, no API keys)
+
+Company career pages are public, but each one only has a few PM roles in India.
+So a crawler checks **hundreds** of them:
+
+- `scripts/crawl.ts` checks about 570 company job boards (Greenhouse, Lever,
+  Ashby, Workable, SmartRecruiters) plus the remote job boards, keeps product
+  roles in India or remote, and saves them to your Upstash database.
+- Once a week it also looks for Indian companies' boards: it tries every
+  company in `data/india-companies.ts` on all five systems and remembers which
+  ones exist. Add Indian companies there by name.
+- Boards that don't exist are skipped for a week, so the list cleans itself.
+- It runs on **GitHub Actions** every 4 hours (`.github/workflows/crawl.yml`),
+  free for public repos. The website reads the saved list and picks up each
+  new crawl within 10 minutes.
+
+**Setup (one time):** in your GitHub repo go to Settings > Secrets and
+variables > Actions > New repository secret, and add `KV_REST_API_URL` and
+`KV_REST_API_TOKEN` (copy them from Upstash: Vercel > Storage > your database >
+Open in Upstash > REST API). Then Actions > Crawl jobs > Run workflow, with
+"Search for Indian companies' job boards now" ticked.
+
+Check results at `/api/sources` on your site, or open the latest run in the
+Actions tab to see the log.
 
 ## 5. How it works
 
@@ -81,6 +107,8 @@ components/MatchPanel.tsx    AI match result under a job
 components/ResumeSheet.tsx   resume upload / portfolio link
 components/SubscribeSheet.tsx daily email sign-up
 lib/sources.ts               fetches each job board and normalises the data
+scripts/crawl.ts             the crawler (runs on GitHub Actions)
+data/                        company lists the crawler checks
 lib/classify.ts              decides what counts as a product role, the level, India vs remote
 lib/gemini.ts                prompt + scoring rubric for the AI match
 app/api/resume               turns a PDF or link into text (nothing stored)

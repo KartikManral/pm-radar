@@ -119,9 +119,9 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
         <section className="intro">
           <h1 className="display">Every product role worth applying to, in one list.</h1>
           <p className="lede">
-            PM, APM and product internship roles in India and remote, from {companies} companies' career pages and
-            three remote job boards. Add your resume to see how well you fit each one, and what to fix before you
-            apply.
+            PM, APM and product internship roles in India and remote, from {companies} companies across company
+            career pages, Indian job sites and remote job boards. Add your resume to see how well you fit each one,
+            and what to fix before you apply.
           </p>
         </section>
 
@@ -269,9 +269,13 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
 
         <footer className="foot">
           <p>
-            Listings come from public company job boards (Greenhouse, Lever, Ashby) and remote job boards (Remotive,
-            Remote OK, Himalayas). Every role links to its original post. Match scores are AI estimates of fit, not a
-            prediction of hiring decisions.
+            Listings come from public company job boards (Greenhouse, Lever, Ashby), remote job boards (Remotive,
+            Remote OK, Himalayas) and{" "}
+            <a href="https://www.adzuna.in" target="_blank" rel="noopener noreferrer">
+              Jobs by Adzuna
+            </a>
+            . Every role links to its original post. Match scores are AI estimates of fit, not a prediction of hiring
+            decisions.
           </p>
           <p>
             Built by{" "}

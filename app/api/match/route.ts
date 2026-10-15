@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { analyzeMatch } from "@/lib/gemini";
-import { findJob, MOCK_MODE } from "@/lib/jobs";
+import { findJob, getDescription, MOCK_MODE } from "@/lib/jobs";
 import { MOCK_MATCH } from "@/lib/mock";
 import { underDailyLimit } from "@/lib/redis";
-import { fetchDescription } from "@/lib/sources";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -31,7 +30,7 @@ export async function POST(req: Request) {
   if (!job) return NextResponse.json({ error: "This role was just taken down. Refresh the list." }, { status: 404 });
 
   try {
-    const description = await fetchDescription(job);
+    const description = await getDescription(job);
     if (description.length < 100)
       return NextResponse.json(
         { error: "This listing has no description we can read. Open it on the company site instead." },
