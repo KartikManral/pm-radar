@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SITE_NAME } from "@/lib/config";
+import { SITE_NAME, type ExternalLink } from "@/lib/config";
+import {
+  EXP_BUCKETS,
+  expLabel,
+  matchesExperience,
+  RECENCY,
+  withinDays,
+  type ExpBucket,
+  type Recency,
+} from "@/lib/filters";
 import { loadResume, type SavedResume } from "@/lib/storage";
 import { ago, BUCKET_LABEL, bucketFor, type Bucket } from "@/lib/time";
 import { LEVEL_LABELS, type Job, type Level } from "@/lib/types";
@@ -22,7 +31,7 @@ type Props = {
   jobs: Job[];
   fetchedAt: number;
   sourceCount: number;
-  externalSearches: { name: string; url: string }[];
+  externalSearches: { group: string; note: string; links: ExternalLink[] }[];
 };
 
 export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
@@ -31,6 +40,8 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
   const [place, setPlace] = useState<Place>("for-you");
   const [levels, setLevels] = useState<Level[]>(LEVELS);
   const [showRestricted, setShowRestricted] = useState(false);
+  const [exp, setExp] = useState<ExpBucket>("any");
+  const [recency, setRecency] = useState<Recency>("30");
   const [openMatch, setOpenMatch] = useState<string | null>(null);
   const [resume, setResume] = useState<SavedResume | null>(null);
   const [pendingMatch, setPendingMatch] = useState<string | null>(null);
@@ -49,10 +60,26 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
       if (j.region === "remote-restricted" && !showRestricted) return false;
       if (place === "india" && j.region !== "india") return false;
       if (place === "remote" && j.region === "india") return false;
+      if (!matchesExperience(j, exp)) return false;
+      if (!withinDays(j, Number(recency), now)) return false;
       if (q && !`${j.title} ${j.company} ${j.location}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [jobs, query, place, levels, showRestricted]);
+  }, [jobs, query, place, levels, showRestricted, exp, recency, now]);
+
+  // Roles hidden only because they don't say how much experience they need.
+  const hiddenNoExp = useMemo(() => {
+    if (exp === "any") return 0;
+    return jobs.filter(
+      (j) =>
+        (j.expMin ?? null) === null &&
+        levels.includes(j.level) &&
+        (showRestricted || j.region !== "remote-restricted") &&
+        !(place === "india" && j.region !== "india") &&
+        !(place === "remote" && j.region === "india") &&
+        withinDays(j, Number(recency), now)
+    ).length;
+  }, [jobs, exp, levels, showRestricted, place, recency, now]);
 
   const groups = useMemo(() => {
     const g: Record<Bucket, Job[]> = { today: [], week: [], earlier: [] };
@@ -168,6 +195,29 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
             </div>
           </div>
 
+          <div className="selects">
+            <label className="select">
+              <span>Experience</span>
+              <select value={exp} onChange={(e) => setExp(e.target.value as ExpBucket)}>
+                {EXP_BUCKETS.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="select">
+              <span>Posted</span>
+              <select value={recency} onChange={(e) => setRecency(e.target.value as Recency)}>
+                {RECENCY.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
           <div className="filter-foot">
             <label className="check">
               <input type="checkbox" checked={showRestricted} onChange={(e) => setShowRestricted(e.target.checked)} />
@@ -181,8 +231,21 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
 
         <p className="count" aria-live="polite">
           {filtered.length} {filtered.length === 1 ? "role" : "roles"}
-          <span className="count-sub"> updated {ago(fetchedAt, now).replace("Just posted", "just now")}</span>
+          <span className="count-sub">
+            {" "}
+            posted in the last {recency === "1" ? "24 hours" : `${recency} days`}, updated{" "}
+            {ago(fetchedAt, now).replace("Just posted", "just now")}
+          </span>
         </p>
+        {hiddenNoExp > 0 && (
+          <p className="hint">
+            {hiddenNoExp} more {hiddenNoExp === 1 ? "role doesn't" : "roles don't"} say how much experience{" "}
+            {hiddenNoExp === 1 ? "it needs" : "they need"}.{" "}
+            <button className="link-btn" onClick={() => setExp("any")}>
+              Show all experience levels
+            </button>
+          </p>
+        )}
 
         {groups.length === 0 && (
           <div className="empty">
@@ -193,6 +256,8 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
                 setQuery("");
                 setLevels(LEVELS);
                 setPlace("for-you");
+                setExp("any");
+                setRecency("30");
               }}
             >
               Reset filters
@@ -225,6 +290,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
                     </p>
                     <p className="job-meta">
                       <span className={`tag tag-${j.level}`}>{LEVEL_LABELS[j.level]}</span>
+                      {expLabel(j) && <span className="tag tag-exp">{expLabel(j)}</span>}
                       {j.region !== "india" && (
                         <span className={j.region === "remote" ? "tag tag-remote" : "tag tag-muted"}>
                           {j.region === "remote" ? "Remote, open to India" : "Remote, other countries"}
@@ -256,20 +322,27 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
         <section className="elsewhere">
           <h2 className="h3">Search other job sites</h2>
           <p className="muted">
-            These sites don't allow copying their listings, so we link to a ready-made search instead.
+            These sites and companies don't allow copying their listings, so we link to them instead.
           </p>
-          <div className="elsewhere-links">
-            {externalSearches.map((s) => (
-              <a key={s.name} className="btn btn-quiet" href={s.url} target="_blank" rel="noopener noreferrer">
-                {s.name}
-              </a>
-            ))}
-          </div>
+          {externalSearches.map((g) => (
+            <div key={g.group} className="elsewhere-group">
+              <h3 className="elsewhere-title">{g.group}</h3>
+              <p className="muted small">{g.note}</p>
+              <div className="elsewhere-links">
+                {g.links.map((s) => (
+                  <a key={s.name} className="btn btn-quiet" href={s.url} target="_blank" rel="noopener noreferrer">
+                    {s.name}
+                  </a>
+                ))}
+              </div>
+            </div>
+          ))}
         </section>
 
         <footer className="foot">
           <p>
-            Listings come from public company job boards (Greenhouse, Lever, Ashby), remote job boards (Remotive,
+            Only roles posted in the last 30 days are shown. Listings come from public company job boards
+            (Greenhouse, Lever, Ashby, Workable, SmartRecruiters), remote job boards (Remotive,
             Remote OK, Himalayas) and{" "}
             <a href="https://www.adzuna.in" target="_blank" rel="noopener noreferrer">
               Jobs by Adzuna

@@ -24,6 +24,9 @@ export type Job = {
   sourceLabel: string;
   url: string;
   postedAt: number | null; // ms timestamp
+  /** Years of experience asked for, null when the post doesn't say. */
+  expMin: number | null;
+  expMax: number | null;
 };
 
 /** Server-side only: may carry a description for the AI match. */

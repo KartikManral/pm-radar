@@ -7,7 +7,7 @@
 
 import { COMPANIES, type AtsCompany, type AtsName } from "../lib/config";
 import { redis } from "../lib/redis";
-import { dedupe, fetchBoard, fetchExtraSources, pool, type BoardOutcome } from "../lib/sources";
+import { dedupe, enrichJobs, fetchBoard, fetchExtraSources, pool, type BoardOutcome } from "../lib/sources";
 import type { JobWithDetail } from "../lib/types";
 import { KNOWN_BOARDS } from "../data/known-boards";
 import { INDIA_COMPANIES, slugVariants } from "../data/india-companies";
@@ -106,6 +106,12 @@ async function main() {
 
   const jobs: JobWithDetail[] = dedupe([...results.map((r) => r.jobs), ...extra.lists]);
 
+  // 5b. Fetch descriptions the board lists don't include, to read the
+  // experience asked for and spot remote roles limited to other countries.
+  const missing = jobs.filter((j) => !j.description || j.description.length < 200).length;
+  await enrichJobs(jobs, 12);
+  console.log(`Fetched ${missing} job descriptions.`);
+
   // Safety: if almost nothing came back, the network probably failed.
   const previousCount = ((await redis.get<unknown[]>("jobs:list")) ?? []).length;
   if (jobs.length < 5 && previousCount > 30) {
@@ -129,12 +135,14 @@ async function main() {
 
   const okBoards = results.filter((r) => r.ok);
   const withRoles = results.filter((r) => r.jobs.length > 0).sort((a, b) => b.jobs.length - a.jobs.length);
+  const withExp = jobs.filter((j) => j.expMin !== null).length;
   const byRegion = jobs.reduce<Record<string, number>>((acc, j) => ((acc[j.region] = (acc[j.region] ?? 0) + 1), acc), {});
   const meta = {
     crawledAt: now,
     tookSeconds: Math.round((Date.now() - started) / 1000),
     roles: jobs.length,
     byRegion,
+    withExperience: withExp,
     boardsTotal: boards.length,
     boardsChecked: results.length,
     boardsWorking: okBoards.length,
@@ -149,7 +157,8 @@ async function main() {
   await redis.set("jobs:meta", meta);
 
   console.log(
-    `Done in ${meta.tookSeconds}s: ${jobs.length} roles (${JSON.stringify(byRegion)}) from ` +
+    `Done in ${meta.tookSeconds}s: ${jobs.length} roles from the last 30 days (${JSON.stringify(byRegion)}), ` +
+      `${withExp} with experience listed, from ` +
       `${withRoles.length} boards with roles; ${okBoards.length}/${results.length} boards responded.`
   );
   console.log("Top boards:", withRoles.slice(0, 15).map((r) => `${r.key}=${r.jobs.length}`).join(", "));

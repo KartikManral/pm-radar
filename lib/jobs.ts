@@ -1,6 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { mockJobs } from "./mock";
 import { redis } from "./redis";
+import { isRecent } from "./classify";
 import { fetchAllSources, fetchDescription, type SourceReport } from "./sources";
 import type { Job, JobWithDetail } from "./types";
 
@@ -36,7 +37,9 @@ async function load(fresh: boolean): Promise<Loaded> {
         redis.get<CrawlMeta>("jobs:meta"),
       ]);
       if (list && list.length) {
-        return { jobs: list, report: meta?.report ?? [], fetchedAt: meta?.crawledAt ?? Date.now(), meta, from: "crawler" };
+        // Roles can cross the 30-day line between crawls.
+        const fresh = list.filter((j) => isRecent(j.postedAt));
+        return { jobs: fresh, report: meta?.report ?? [], fetchedAt: meta?.crawledAt ?? Date.now(), meta, from: "crawler" };
       }
     } catch (e) {
       console.warn("[jobs] Redis read failed, fetching live:", String(e).slice(0, 160));
@@ -49,7 +52,7 @@ async function load(fresh: boolean): Promise<Loaded> {
 }
 
 /** Cached list; picks up a new crawl within about 10 minutes. */
-export const getJobsCached = unstable_cache(() => load(false), ["all-jobs-v2"], { revalidate: 600 });
+export const getJobsCached = unstable_cache(() => load(false), ["all-jobs-v3"], { revalidate: 600 });
 
 /** Uncached; used by the daily email. */
 export const getJobsFresh = () => load(true);

@@ -7,7 +7,17 @@ import {
   type AtsCompany,
   type AtsName,
 } from "./config";
-import { decodeEntities, htmlToText, isProductRole, levelFor, regionFor, toMs } from "./classify";
+import {
+  decodeEntities,
+  experienceFor,
+  htmlToText,
+  isProductRole,
+  isRecent,
+  levelFor,
+  regionFor,
+  remoteIsRestricted,
+  toMs,
+} from "./classify";
 import { SOURCE_LABELS, type JobWithDetail, type SourceId } from "./types";
 
 type FetchOpts = { fresh?: boolean; revalidate?: number };
@@ -54,7 +64,9 @@ function makeJob(input: {
   const location = decodeEntities(input.location || "").trim();
   const region = input.region ?? regionFor(location, input.isRemote);
   if (!region) return null;
-  return {
+  const postedAt = toMs(input.postedAt);
+  if (!isRecent(postedAt)) return null;
+  const job: JobWithDetail = {
     id: [input.source, input.board, input.rawId].filter(Boolean).join("~"),
     rawId: String(input.rawId),
     board: input.board,
@@ -66,10 +78,55 @@ function makeJob(input: {
     source: input.source,
     sourceLabel: isAts(input.source) ? `${input.company} careers` : SOURCE_LABELS[input.source],
     url: input.url,
-    postedAt: toMs(input.postedAt),
-    // Kept short so the cached list stays small.
-    description: input.description?.slice(0, 4000),
+    postedAt,
+    expMin: null,
+    expMax: null,
   };
+  return withDescription(job, input.description ?? "");
+}
+
+/**
+ * Reads experience and country limits from a description and stores a short
+ * copy of it on the job (for the AI match).
+ */
+export function withDescription(job: JobWithDetail, description: string): JobWithDetail {
+  const exp = experienceFor(job.title, description);
+  job.expMin = exp?.min ?? null;
+  job.expMax = exp?.max ?? null;
+  if (job.region === "remote" && remoteIsRestricted(description)) job.region = "remote-restricted";
+  if (description) job.description = description.slice(0, 4000);
+  return job;
+}
+
+/** Fetches the full description for jobs whose board list doesn't include it. */
+export async function fetchDescription(job: JobWithDetail): Promise<string> {
+  if (job.description && job.description.length > 200) return job.description;
+  if (job.source === "greenhouse" && job.board && job.rawId) {
+    const d = await getJson(`https://boards-api.greenhouse.io/v1/boards/${job.board}/jobs/${job.rawId}`, { fresh: true });
+    return htmlToText(decodeEntities(d.content ?? ""), 12000);
+  }
+  if (job.source === "smartrecruiters" && job.board && job.rawId) {
+    const d = await getJson(`https://api.smartrecruiters.com/v1/companies/${job.board}/postings/${job.rawId}`, { fresh: true });
+    const sec = d.jobAd?.sections ?? {};
+    return htmlToText(
+      [sec.jobDescription?.text, sec.qualifications?.text, sec.additionalInformation?.text].filter(Boolean).join("\n"),
+      12000
+    );
+  }
+  return job.description ?? "";
+}
+
+/** Adds descriptions (and so experience and country limits) to jobs that lack them. */
+export async function enrichJobs(jobs: JobWithDetail[], workers = 12): Promise<JobWithDetail[]> {
+  const needs = jobs.filter((j) => !j.description || j.description.length < 200);
+  await pool(needs, workers, async (j) => {
+    try {
+      withDescription(j, await fetchDescription(j));
+    } catch {
+      /* keep the job without a description */
+    }
+  });
+  return jobs;
 }
 
 // ---------- Company job boards (ATS) ----------
@@ -401,14 +458,4 @@ export async function fetchAllSources(opts: FetchOpts = {}) {
     ...extra.report,
   ];
   return { jobs: dedupe([...boards.map((b) => b.jobs), ...extra.lists]), report };
-}
-
-/** Full description for one job, used by the AI match. */
-export async function fetchDescription(job: JobWithDetail): Promise<string> {
-  if (job.description && job.description.length > 200) return job.description;
-  if (job.source === "greenhouse" && job.board && job.rawId) {
-    const d = await getJson(`https://boards-api.greenhouse.io/v1/boards/${job.board}/jobs/${job.rawId}`);
-    return htmlToText(decodeEntities(d.content ?? ""));
-  }
-  return job.description ?? "";
 }

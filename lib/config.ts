@@ -83,23 +83,56 @@ export const ADZUNA_SEARCHES = [
 ];
 export const ADZUNA_REVALIDATE_SECONDS = 3 * 60 * 60;
 
-// Search links for sites we can't legally copy listings from.
-export const EXTERNAL_SEARCHES = [
+// Sites and companies whose listings we can't legally copy. We link to a
+// ready-made search (or their careers page) instead.
+export type ExternalLink = { name: string; url: string };
+
+export const EXTERNAL_SEARCHES: { group: string; note: string; links: ExternalLink[] }[] = [
   {
-    name: "LinkedIn",
-    url: "https://www.linkedin.com/jobs/search/?keywords=product%20manager&location=India&f_TPR=r604800",
+    group: "Job sites",
+    note: "Product manager searches in India, opened on each site.",
+    links: [
+      { name: "LinkedIn", url: "https://www.linkedin.com/jobs/search/?keywords=product%20manager&location=India&f_TPR=r604800" },
+      { name: "Naukri", url: "https://www.naukri.com/product-manager-jobs-in-india" },
+      { name: "Indeed", url: "https://in.indeed.com/jobs?q=product+manager&l=India&fromage=14" },
+      { name: "Wellfound", url: "https://wellfound.com/role/l/product-manager/india" },
+      { name: "Glassdoor", url: "https://www.glassdoor.co.in/Job/india-product-manager-jobs-SRCH_IL.0,5_IN115_KO6,21.htm" },
+      { name: "foundit", url: "https://www.foundit.in/srp/results?query=product%20manager&locations=India" },
+      { name: "Instahyre", url: "https://www.instahyre.com/" },
+      { name: "iimjobs", url: "https://www.iimjobs.com/" },
+      { name: "Hirist", url: "https://www.hirist.tech/" },
+      { name: "Cutshort", url: "https://cutshort.io/jobs" },
+      { name: "Shine", url: "https://www.shine.com/job-search/product-manager-jobs" },
+      { name: "Y Combinator startups", url: "https://www.workatastartup.com/jobs?role=product" },
+      { name: "Internshala", url: "https://internshala.com/internships/product-management-internship/" },
+      { name: "Unstop", url: "https://unstop.com/jobs" },
+    ],
   },
   {
-    name: "Naukri",
-    url: "https://www.naukri.com/product-manager-jobs-in-india",
-  },
-  {
-    name: "Wellfound",
-    url: "https://wellfound.com/role/l/product-manager/india",
-  },
-  {
-    name: "Internshala",
-    url: "https://internshala.com/internships/product-management-internship/",
+    group: "Company career pages",
+    note: "Large companies that hire PMs in India but run their own careers sites.",
+    links: [
+      { name: "Google", url: "https://www.google.com/about/careers/applications/jobs/results/?q=product%20manager&location=India" },
+      { name: "Microsoft", url: "https://jobs.careers.microsoft.com/global/en/search?q=product%20manager&lc=India" },
+      { name: "Amazon", url: "https://www.amazon.jobs/en/search?base_query=product+manager&loc_query=India" },
+      { name: "Meta", url: "https://www.metacareers.com/jobs?q=product%20manager" },
+      { name: "Apple", url: "https://jobs.apple.com/en-in/search?search=product%20manager&location=india-INDC" },
+      { name: "Flipkart", url: "https://www.flipkartcareers.com/" },
+      { name: "Walmart Global Tech", url: "https://walmart.wd5.myworkdayjobs.com/WalmartExternal?q=product%20manager" },
+      { name: "PhonePe", url: "https://www.phonepe.com/careers/" },
+      { name: "Swiggy", url: "https://careers.swiggy.com/" },
+      { name: "Zomato", url: "https://www.zomato.com/careers" },
+      { name: "Myntra", url: "https://careers.myntra.com/" },
+      { name: "MakeMyTrip", url: "https://careers.makemytrip.com/" },
+      { name: "Uber", url: "https://www.uber.com/global/en/careers/list/?query=product%20manager" },
+      { name: "Adobe", url: "https://careers.adobe.com/us/en/search-results?keywords=product%20manager" },
+      { name: "Salesforce", url: "https://careers.salesforce.com/en/jobs/?search=product+manager" },
+      { name: "Atlassian", url: "https://www.atlassian.com/company/careers/all-jobs" },
+      { name: "Intuit", url: "https://jobs.intuit.com/search-jobs/product%20manager/India" },
+      { name: "SAP", url: "https://jobs.sap.com/search/?q=product+manager&locationsearch=India" },
+      { name: "Oracle", url: "https://careers.oracle.com/" },
+      { name: "Jio", url: "https://careers.jio.com/" },
+    ],
   },
 ];
 

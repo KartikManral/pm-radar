@@ -25,5 +25,5 @@ export function bucketFor(ms: number | null, now: number): Bucket {
 export const BUCKET_LABEL: Record<Bucket, string> = {
   today: "Today",
   week: "This week",
-  earlier: "Earlier",
+  earlier: "Earlier this month",
 };

@@ -1,6 +1,6 @@
 // Sample data so you can run the site locally without internet (MOCK_JOBS=1).
 import type { JobWithDetail, MatchResult } from "./types";
-import { isProductRole, levelFor, regionFor } from "./classify";
+import { experienceFor, isProductRole, levelFor, regionFor } from "./classify";
 import { SOURCE_LABELS, type SourceId } from "./types";
 
 const H = 60 * 60 * 1000;
@@ -9,7 +9,7 @@ const rows: [string, string, string, SourceId, number][] = [
   ["Associate Product Manager", "Groww", "Bengaluru, India", "greenhouse", 3],
   ["Product Management Intern", "CRED", "Bangalore", "lever", 7],
   ["Product Manager, Payments", "Stripe", "Bengaluru, India", "greenhouse", 20],
-  ["Product Analyst II", "InMobi", "Bangalore", "greenhouse", 30],
+  ["Product Manager, Merchant Lending", "Razorpay", "Bengaluru", "greenhouse", 30],
   ["Senior Product Manager", "Druva", "Pune, Maharashtra, India", "greenhouse", 40],
   ["Product Manager - Growth", "Meesho", "Bangalore", "lever", 52],
   ["Product Manager, AI Platform", "Atlan", "Remote - India", "ashby", 70],
@@ -23,6 +23,8 @@ const rows: [string, string, string, SourceId, number][] = [
   ["Product Manager, Merchant Experience", "Zeta", "Hyderabad", "lever", 300],
   ["Head of Product", "Supabase", "Remote, Worldwide", "ashby", 400],
 ];
+
+const MOCK_EXP = ["2-4 years of product management experience", "5+ years of experience in product", "", "3 to 6 years of experience", "8+ years experience leading products"];
 
 export function mockJobs(): JobWithDetail[] {
   const now = Date.now();
@@ -39,6 +41,8 @@ export function mockJobs(): JobWithDetail[] {
       sourceLabel: ["greenhouse", "lever", "ashby"].includes(source) ? `${company} careers` : SOURCE_LABELS[source],
       url: "https://example.com/job/" + i,
       postedAt: now - hoursAgo * H,
+      expMin: experienceFor(title, MOCK_EXP[i % MOCK_EXP.length])?.min ?? null,
+      expMax: experienceFor(title, MOCK_EXP[i % MOCK_EXP.length])?.max ?? null,
       description:
         "We're looking for a product manager to own discovery and delivery for a core product area. You'll talk to users, write PRDs, prioritise the roadmap with engineering and design, define success metrics, and run A/B tests. Requirements: 0-2 years in product or a related role, strong analytical skills (SQL a plus), clear writing, and a track record of shipping.",
     }))
