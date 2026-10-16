@@ -79,7 +79,7 @@ Company career pages are public, but each one only has a few PM roles in India.
 So a crawler checks **hundreds** of them:
 
 - `scripts/crawl.ts` checks about 570 company job boards (Greenhouse, Lever,
-  Ashby, Workable, SmartRecruiters) plus the remote job boards, keeps product
+  Ashby, Workable, SmartRecruiters, Keka) plus the remote job boards, keeps product
   roles in India or remote, and saves them to your Upstash database.
 - Once a week it also looks for Indian companies' boards: it tries every
   company in `data/india-companies.ts` on all five systems and remembers which

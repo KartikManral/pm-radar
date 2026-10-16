@@ -13,7 +13,7 @@ import { KNOWN_BOARDS } from "../data/known-boards";
 import { INDIA_COMPANIES, slugVariants } from "../data/india-companies";
 
 const DAY = 24 * 60 * 60 * 1000;
-const ALL_ATS: AtsName[] = ["greenhouse", "lever", "ashby", "workable", "smartrecruiters"];
+const ALL_ATS: AtsName[] = ["greenhouse", "lever", "ashby", "workable", "smartrecruiters", "keka"];
 const WORKERS = 20;
 
 type Health = { fails: number; skipUntil: number };

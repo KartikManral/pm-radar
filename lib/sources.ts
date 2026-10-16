@@ -32,7 +32,7 @@ async function getJson(url: string, opts: FetchOpts = {}, headers: Record<string
   return res.json();
 }
 
-const ATS_SOURCES: SourceId[] = ["greenhouse", "lever", "ashby", "workable", "smartrecruiters"];
+const ATS_SOURCES: SourceId[] = ["greenhouse", "lever", "ashby", "workable", "smartrecruiters", "keka"];
 const isAts = (s: SourceId) => ATS_SOURCES.includes(s);
 
 /** "grafanalabs" -> "Grafanalabs", "urban-company" -> "Urban Company" */
@@ -251,12 +251,49 @@ async function fromSmartRecruiters(c: AtsCompany, o: FetchOpts): Promise<BoardRe
   };
 }
 
+// Keka: HR software used by many Indian startups. Its careers pages publish
+// open jobs as JSON at {company}.keka.com/careers/api/jobs/default/active.
+async function fromKeka(c: AtsCompany, o: FetchOpts): Promise<BoardResult> {
+  const data = await getJson(`https://${c.board}.keka.com/careers/api/jobs/default/active`, o);
+  const list = Array.isArray(data) ? data : [];
+  return {
+    total: list.length,
+    jobs: list.map((j: any) => {
+      const locs: any[] = j.jobLocations ?? [];
+      const location = locs
+        .map((l) => [l.city || l.name, l.countryName].filter(Boolean).join(", "))
+        .filter(Boolean)
+        .join("; ");
+      const job = makeJob({
+        source: "keka",
+        board: c.board,
+        rawId: j.id,
+        title: j.title,
+        company: c.name || prettyName(c.board),
+        location: location || "India",
+        isRemote: /remote/i.test(location) || /remote/i.test(j.title ?? ""),
+        url: `https://${c.board}.keka.com/careers/jobdetails/${j.id}`,
+        postedAt: j.publishedOn,
+        description: htmlToText(j.description ?? j.excerpt ?? ""),
+      });
+      // Keka has its own experience field, e.g. "2-5", "6–8 years", "2 7".
+      const nums = String(j.experience ?? "").match(/\d{1,2}/g)?.map(Number) ?? [];
+      if (job && nums.length && nums[0] <= 25) {
+        job.expMin = nums[0];
+        job.expMax = nums[1] !== undefined && nums[1] >= nums[0] ? nums[1] : null;
+      }
+      return job;
+    }),
+  };
+}
+
 const FETCHERS: Record<AtsName, (c: AtsCompany, o: FetchOpts) => Promise<BoardResult>> = {
   greenhouse: fromGreenhouse,
   lever: fromLever,
   ashby: fromAshby,
   workable: fromWorkable,
   smartrecruiters: fromSmartRecruiters,
+  keka: fromKeka,
 };
 
 export type BoardOutcome = {

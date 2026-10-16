@@ -17,7 +17,7 @@ export const SITE_URL =
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
     : "http://localhost:3000");
 
-export type AtsName = "greenhouse" | "lever" | "ashby" | "workable" | "smartrecruiters";
+export type AtsName = "greenhouse" | "lever" | "ashby" | "workable" | "smartrecruiters" | "keka";
 
 export type AtsCompany = {
   name?: string;

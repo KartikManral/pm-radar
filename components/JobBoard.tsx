@@ -342,7 +342,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
         <footer className="foot">
           <p>
             Only roles posted in the last 30 days are shown. Listings come from public company job boards
-            (Greenhouse, Lever, Ashby, Workable, SmartRecruiters), remote job boards (Remotive,
+            (Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Keka), remote job boards (Remotive,
             Remote OK, Himalayas) and{" "}
             <a href="https://www.adzuna.in" target="_blank" rel="noopener noreferrer">
               Jobs by Adzuna
