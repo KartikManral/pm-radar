@@ -5,7 +5,12 @@
 // Add a company by adding its name; add `slugs` if its careers URL uses an
 // unusual name (e.g. jobs.lever.co/<slug>).
 
-export type Candidate = { name: string; slugs?: string[] };
+export type Candidate = {
+  name: string;
+  slugs?: string[];
+  /** Hiring tools to try; all of them when not set. */
+  ats?: import("../lib/config").AtsName[];
+};
 
 export const INDIA_COMPANIES: Candidate[] = [
   // Fintech

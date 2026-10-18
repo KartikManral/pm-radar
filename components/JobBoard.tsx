@@ -20,6 +20,20 @@ import SubscribeSheet from "./SubscribeSheet";
 
 type Place = "for-you" | "india" | "remote";
 
+// Company initials get one of these colours, picked from the name so a
+// company always has the same colour.
+const AVATAR_HUES = ["#0ea5e9", "#8b5cf6", "#ec4899", "#f97316", "#10b981", "#eab308", "#6366f1", "#14b8a6", "#ef4444", "#84cc16"];
+function avatarColor(name: string) {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return AVATAR_HUES[h % AVATAR_HUES.length];
+}
+function initials(name: string) {
+  const words = name.replace(/[^A-Za-z0-9 ]/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return "?";
+  return (words.length > 1 ? words[0][0] + words[1][0] : words[0].slice(0, 2)).toUpperCase();
+}
+
 const PLACES: { id: Place; label: string }[] = [
   { id: "for-you", label: "India + remote" },
   { id: "india", label: "India" },
@@ -266,7 +280,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
         )}
 
         {groups.map(({ bucket, jobs: list }) => (
-          <section key={bucket} className="bucket" aria-labelledby={`b-${bucket}`}>
+          <section key={bucket} className={`bucket bucket-${bucket}`} aria-labelledby={`b-${bucket}`}>
             <div className="rail">
               <h2 id={`b-${bucket}`} className="rail-label">
                 {BUCKET_LABEL[bucket]}
@@ -279,6 +293,14 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
               {list.map((j) => (
                 <li key={j.id} className={openMatch === j.id ? "job job-open" : "job"}>
                   <div className="job-main">
+                    <span
+                      className="avatar"
+                      style={{ ["--av" as string]: avatarColor(j.company) } as React.CSSProperties}
+                      aria-hidden="true"
+                    >
+                      {initials(j.company)}
+                    </span>
+                    <div className="job-text">
                     <h3 className="job-title">
                       <a href={j.url} target="_blank" rel="noopener noreferrer">
                         {j.title}
@@ -289,6 +311,9 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
                       <span className="job-loc">{j.location}</span>
                     </p>
                     <p className="job-meta">
+                      {j.postedAt != null && now - j.postedAt < 24 * 3_600_000 && (
+                        <span className="tag tag-new">New</span>
+                      )}
                       <span className={`tag tag-${j.level}`}>{LEVEL_LABELS[j.level]}</span>
                       {expLabel(j) && <span className="tag tag-exp">{expLabel(j)}</span>}
                       {j.region !== "india" && (
@@ -299,6 +324,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
                       <span className="source">via {j.sourceLabel}</span>
                       <span className="when">{ago(j.postedAt, now)}</span>
                     </p>
+                    </div>
                   </div>
                   <div className="job-actions">
                     <button
@@ -343,7 +369,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
           <p>
             Only roles posted in the last 30 days are shown. Listings come from public company job boards
             (Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Keka), remote job boards (Remotive,
-            Remote OK, Himalayas) and{" "}
+            Remote OK, Himalayas, We Work Remotely, Jobicy, Working Nomads), Hacker News "Who is hiring?" and{" "}
             <a href="https://www.adzuna.in" target="_blank" rel="noopener noreferrer">
               Jobs by Adzuna
             </a>

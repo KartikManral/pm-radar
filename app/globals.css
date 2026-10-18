@@ -1,19 +1,35 @@
 /* ---------- Tokens ---------- */
+/* Teal for actions and links, amber for "new", graphite (not navy) in dark mode. */
 :root {
-  --paper: #f5f7fb;
+  --paper: #f6f7f5;
   --surface: #ffffff;
-  --ink: #17203d;
-  --muted: #5b6380;
-  --faint: #8a90a8;
-  --rule: #dce1ec;
-  --accent: #3341c9;
+  --ink: #131619;
+  --muted: #5a6168;
+  --faint: #868c92;
+  --rule: #e2e5e3;
+  --accent: #0f766e;
+  --accent-hover: #0b5f58;
   --accent-ink: #ffffff;
-  --accent-soft: #e7e9fb;
-  --strong: #17775a;
-  --good: #3341c9;
-  --stretch: #a8650a;
-  --long: #b02846;
-  --focus: #3341c9;
+  --accent-soft: #e2f3f0;
+  --amber: #b45309;
+  --amber-bg: #fef3c7;
+  --amber-dot: #f59e0b;
+  --strong: #15803d;
+  --good: #0f766e;
+  --stretch: #b45309;
+  --long: #be123c;
+  --focus: #0f766e;
+  --lv-intern: #6d28d9;
+  --lv-intern-bg: #ede9fe;
+  --lv-entry: #15803d;
+  --lv-entry-bg: #dcfce7;
+  --lv-pm: #0f766e;
+  --lv-pm-bg: #ccfbf1;
+  --lv-senior: #475569;
+  --lv-senior-bg: #e2e8f0;
+  --av-mix: black;
+  --shadow: 0 24px 60px rgba(17, 19, 21, 0.18);
+  --backdrop: rgba(17, 19, 21, 0.45);
   --display: "Bricolage Grotesque Variable", "Bricolage Grotesque", system-ui, sans-serif;
   --body: "Instrument Sans Variable", "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --radius: 10px;
@@ -22,20 +38,35 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper: #10152b;
-    --surface: #171d38;
-    --ink: #e8ebf7;
-    --muted: #a3aac6;
-    --faint: #7c84a3;
-    --rule: #2a3254;
-    --accent: #8d97ff;
-    --accent-ink: #10152b;
-    --accent-soft: #252d5c;
-    --strong: #4cc79a;
-    --good: #8d97ff;
-    --stretch: #f0a944;
-    --long: #ff7a93;
-    --focus: #b0b7ff;
+    --paper: #121314;
+    --surface: #1b1d1f;
+    --ink: #ecedee;
+    --muted: #a1a7ad;
+    --faint: #757b81;
+    --rule: #2c2f33;
+    --accent: #2dd4bf;
+    --accent-hover: #5eead4;
+    --accent-ink: #0b1514;
+    --accent-soft: #13302c;
+    --amber: #fbbf24;
+    --amber-bg: #33280f;
+    --amber-dot: #fbbf24;
+    --strong: #4ade80;
+    --good: #2dd4bf;
+    --stretch: #fbbf24;
+    --long: #fb7185;
+    --focus: #5eead4;
+    --lv-intern: #c4b5fd;
+    --lv-intern-bg: #2a2342;
+    --lv-entry: #86efac;
+    --lv-entry-bg: #15301f;
+    --lv-pm: #5eead4;
+    --lv-pm-bg: #11302c;
+    --lv-senior: #cbd5e1;
+    --lv-senior-bg: #262a2f;
+    --av-mix: white;
+    --shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+    --backdrop: rgba(0, 0, 0, 0.6);
     color-scheme: dark;
   }
 }
@@ -149,7 +180,7 @@ p {
   color: var(--accent-ink);
 }
 .btn-primary:hover:not(:disabled) {
-  filter: brightness(1.08);
+  background: var(--accent-hover);
 }
 .btn-outline {
   border-color: var(--rule);
@@ -473,7 +504,7 @@ p {
   font-size: 0.88rem;
   color: var(--muted);
 }
-.tag-exp {
+.tag.tag-exp {
   background: transparent;
   color: var(--ink);
   border: 1px solid var(--rule);
@@ -519,8 +550,16 @@ p {
   letter-spacing: -0.02em;
   font-variation-settings: "wdth" 85;
 }
-.bucket:first-of-type .rail-label::after {
+.bucket-today .rail-label::before {
   content: "";
+  display: inline-block;
+  width: 0.32em;
+  height: 0.32em;
+  margin-right: 0.28em;
+  vertical-align: 0.18em;
+  border-radius: 50%;
+  background: var(--amber-dot);
+  box-shadow: 0 0 0 0.12em color-mix(in srgb, var(--amber-dot) 30%, transparent);
 }
 .rail-count {
   font-family: var(--display);
@@ -576,6 +615,36 @@ p {
     column-gap: 24px;
   }
 }
+.job-main {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.job-text {
+  min-width: 0;
+}
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.05rem;
+  background: color-mix(in srgb, var(--av) 16%, var(--surface));
+  color: color-mix(in srgb, var(--av) 72%, var(--av-mix));
+  border: 1px solid color-mix(in srgb, var(--av) 24%, transparent);
+}
+@media (max-width: 480px) {
+  .avatar {
+    width: 34px;
+    height: 34px;
+    font-size: 0.95rem;
+  }
+}
 .job-title {
   font-family: var(--display);
   font-size: 1.18rem;
@@ -619,14 +688,25 @@ p {
   background: var(--accent-soft);
   color: var(--accent);
 }
-.tag-intern,
+.tag-intern {
+  background: var(--lv-intern-bg);
+  color: var(--lv-intern);
+}
 .tag-entry {
-  background: color-mix(in srgb, var(--strong) 14%, transparent);
-  color: var(--strong);
+  background: var(--lv-entry-bg);
+  color: var(--lv-entry);
+}
+.tag-pm {
+  background: var(--lv-pm-bg);
+  color: var(--lv-pm);
 }
 .tag-senior {
-  background: color-mix(in srgb, var(--muted) 14%, transparent);
-  color: var(--muted);
+  background: var(--lv-senior-bg);
+  color: var(--lv-senior);
+}
+.tag-new {
+  background: var(--amber-bg);
+  color: var(--amber);
 }
 .tag-remote {
   background: transparent;
@@ -920,10 +1000,10 @@ p {
   border-radius: 18px;
   background: var(--surface);
   color: var(--ink);
-  box-shadow: 0 24px 60px rgba(16, 21, 43, 0.28);
+  box-shadow: var(--shadow);
 }
 .sheet::backdrop {
-  background: rgba(16, 21, 43, 0.5);
+  background: var(--backdrop);
 }
 .sheet[open] {
   animation: open 0.2s ease-out;

@@ -388,6 +388,158 @@ async function fromHimalayas(o: FetchOpts) {
   });
 }
 
+// ---------- More remote boards ----------
+
+async function getText(url: string, o: FetchOpts) {
+  const res = await fetch(url, {
+    headers: { "User-Agent": "PMRadar/1.0 (job aggregator)" },
+    signal: AbortSignal.timeout(12_000),
+    ...(o.fresh ? { cache: "no-store" as const } : { next: { revalidate: JOBS_REVALIDATE_SECONDS } }),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${url}`);
+  return res.text();
+}
+
+const xmlTag = (item: string, tag: string) => {
+  const m = item.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
+  return m ? decodeEntities(m[1].replace(/^<!\[CDATA\[|\]\]>$/g, "")).trim() : "";
+};
+
+// We Work Remotely: public RSS feed of product jobs. Titles look like "Company: Role".
+async function fromWeWorkRemotely(o: FetchOpts) {
+  const xml = await getText("https://weworkremotely.com/categories/remote-product-jobs.rss", o);
+  const items = xml.match(/<item>[\s\S]*?<\/item>/gi) ?? [];
+  return items.map((it) => {
+    const full = xmlTag(it, "title");
+    const i = full.indexOf(":");
+    const company = i > 0 ? full.slice(0, i).trim() : "Company not listed";
+    const title = i > 0 ? full.slice(i + 1).trim() : full;
+    const link = xmlTag(it, "link") || xmlTag(it, "guid");
+    return makeJob({
+      source: "weworkremotely",
+      rawId: link,
+      title,
+      company,
+      location: xmlTag(it, "region") || "Remote",
+      isRemote: true,
+      url: link,
+      postedAt: xmlTag(it, "pubDate"),
+      description: htmlToText(xmlTag(it, "description")),
+    });
+  });
+}
+
+// Jobicy: public remote jobs API (asks for a link back, which every listing has).
+async function fromJobicy(o: FetchOpts) {
+  const data = await getJson("https://jobicy.com/api/v2/remote-jobs?count=100&tag=product%20manager", o);
+  return (data.jobs ?? []).map((j: any) =>
+    makeJob({
+      source: "jobicy",
+      rawId: j.id,
+      title: j.jobTitle,
+      company: j.companyName,
+      location: Array.isArray(j.jobGeo) ? j.jobGeo.join(", ") : j.jobGeo || "Anywhere",
+      isRemote: true,
+      url: j.url,
+      postedAt: j.pubDate,
+      description: htmlToText(j.jobDescription ?? j.jobExcerpt ?? ""),
+    })
+  );
+}
+
+// Working Nomads: public remote jobs feed.
+async function fromWorkingNomads(o: FetchOpts) {
+  const data = await getJson("https://www.workingnomads.com/api/exposed_jobs/", o);
+  return (Array.isArray(data) ? data : []).map((j: any) =>
+    makeJob({
+      source: "workingnomads",
+      rawId: j.url,
+      title: j.title,
+      company: j.company_name,
+      location: j.location || "Anywhere",
+      isRemote: true,
+      url: j.url,
+      postedAt: j.pub_date,
+      description: htmlToText(j.description ?? ""),
+    })
+  );
+}
+
+// ---------- Hacker News "Who is hiring?" ----------
+// Each month hundreds of startups post in one thread. We read PM roles from it,
+// and collect links to company job boards so the crawler can check them too.
+
+const HN_ROLE =
+  /\b((?:senior|sr\.?|lead|principal|staff|group|associate|founding|technical|ai|growth|platform)\s+)*(?:product\s+manager|product\s+lead|product\s+owner|head\s+of\s+product)\b/i;
+
+const BOARD_LINKS: { ats: AtsName; re: RegExp }[] = [
+  { ats: "greenhouse", re: /(?:boards|job-boards)\.greenhouse\.io\/(?:embed\/job_board\?for=)?([a-z0-9_-]+)/gi },
+  { ats: "lever", re: /jobs\.lever\.co\/([a-z0-9_.-]+)/gi },
+  { ats: "ashby", re: /jobs\.ashbyhq\.com\/([a-z0-9_.%-]+)/gi },
+  { ats: "workable", re: /apply\.workable\.com\/([a-z0-9_-]+)/gi },
+  { ats: "keka", re: /([a-z0-9-]+)\.keka\.com\/careers/gi },
+];
+
+export type HnResult = { jobs: (JobWithDetail | null)[]; boards: AtsCompany[] };
+
+export async function fetchHackerNews(o: FetchOpts = {}): Promise<HnResult> {
+  const search = await getJson(
+    "https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=6",
+    o
+  );
+  const thread = (search.hits ?? []).find((h: any) => /who is hiring/i.test(h.title ?? ""));
+  if (!thread) return { jobs: [], boards: [] };
+  const data = await getJson(`https://hn.algolia.com/api/v1/items/${thread.objectID}`, o);
+  const jobs: (JobWithDetail | null)[] = [];
+  const boards = new Map<string, AtsCompany>();
+
+  for (const c of data.children ?? []) {
+    const html: string = c.text ?? "";
+    if (!html) continue;
+    const text = htmlToText(html, 12000);
+    const firstLine = text.split("\n")[0] ?? "";
+    const company = (firstLine.split("|")[0] ?? "").replace(/\(YC [^)]*\)/i, "").trim().slice(0, 60);
+
+    // Job board links (decoded from the comment's HTML).
+    const raw = decodeEntities(html);
+    for (const { ats, re } of BOARD_LINKS) {
+      for (const m of raw.matchAll(re)) {
+        const board = m[1].toLowerCase().replace(/\/$/, "");
+        if (!board || ["embed", "www", "jobs", "careers"].includes(board)) continue;
+        const key = `${ats}:${board}`;
+        if (!boards.has(key)) boards.set(key, { ats, board, name: company || prettyName(board) });
+      }
+    }
+
+    const role = text.match(HN_ROLE);
+    if (!role || !company) continue;
+    const title = role[0].replace(/\s+/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+    const remote = /\bremote\b/i.test(firstLine);
+    const link = raw.match(/href="(https?:\/\/[^"]+)"/i)?.[1];
+    jobs.push(
+      makeJob({
+        source: "hackernews",
+        rawId: c.id,
+        title,
+        company,
+        location: firstLine.split("|").slice(1).join(" | ").trim().slice(0, 120) || (remote ? "Remote" : ""),
+        isRemote: remote,
+        url: link || `https://news.ycombinator.com/item?id=${c.id}`,
+        postedAt: c.created_at,
+        description: text,
+      })
+    );
+  }
+  return { jobs, boards: [...boards.values()] };
+}
+
+let hnCache: Promise<HnResult> | null = null;
+/** One fetch per crawl, shared by the job list and board discovery. */
+export function hackerNewsOnce(o: FetchOpts = {}) {
+  hnCache ??= fetchHackerNews(o).catch(() => ({ jobs: [], boards: [] }));
+  return hnCache;
+}
+
 // ---------- Adzuna (India job sites) ----------
 
 // Adzuna categories that are not product management in India (pharma and
@@ -466,6 +618,11 @@ export async function fetchExtraSources(opts: FetchOpts = {}) {
   if (REMOTE_BOARDS.remotive) tasks.push({ name: "Remotive", run: () => fromRemotive(opts) });
   if (REMOTE_BOARDS.remoteok) tasks.push({ name: "Remote OK", run: () => fromRemoteOk(opts) });
   if (REMOTE_BOARDS.himalayas) tasks.push({ name: "Himalayas", run: () => fromHimalayas(opts) });
+  if (REMOTE_BOARDS.weworkremotely) tasks.push({ name: "We Work Remotely", run: () => fromWeWorkRemotely(opts) });
+  if (REMOTE_BOARDS.jobicy) tasks.push({ name: "Jobicy", run: () => fromJobicy(opts) });
+  if (REMOTE_BOARDS.workingnomads) tasks.push({ name: "Working Nomads", run: () => fromWorkingNomads(opts) });
+  if (REMOTE_BOARDS.hackernews)
+    tasks.push({ name: "Hacker News (Who is hiring)", run: async () => (await hackerNewsOnce(opts)).jobs });
   tasks.push({ name: "Adzuna (India job sites)", run: () => fromAdzuna(opts) });
 
   const settled = await Promise.allSettled(tasks.map((t) => t.run()));

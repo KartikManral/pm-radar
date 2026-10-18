@@ -69,6 +69,10 @@ export const REMOTE_BOARDS = {
   remotive: true,
   remoteok: true,
   himalayas: true,
+  weworkremotely: true,
+  jobicy: true,
+  workingnomads: true,
+  hackernews: true,
 };
 
 // Adzuna: a job search API that gathers listings from many Indian job sites.

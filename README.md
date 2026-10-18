@@ -84,6 +84,7 @@ So a crawler checks **hundreds** of them:
 - Once a week it also looks for Indian companies' boards: it tries every
   company in `data/india-companies.ts` on all five systems and remembers which
   ones exist. Add Indian companies there by name.
+- Discovery also checks Y Combinator's Indian startups and fully remote YC companies that are hiring (from github.com/yc-oss/api), and every run adds company job boards linked in Hacker News' monthly "Who is hiring?" thread.
 - Boards that don't exist are skipped for a week, so the list cleans itself.
 - It runs on **GitHub Actions** every 4 hours (`.github/workflows/crawl.yml`),
   free for public repos. The website reads the saved list and picks up each

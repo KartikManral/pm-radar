@@ -7,10 +7,11 @@
 
 import { COMPANIES, type AtsCompany, type AtsName } from "../lib/config";
 import { redis } from "../lib/redis";
-import { dedupe, enrichJobs, fetchBoard, fetchExtraSources, pool, type BoardOutcome } from "../lib/sources";
+import { dedupe, enrichJobs, fetchBoard, fetchExtraSources, hackerNewsOnce, pool, type BoardOutcome } from "../lib/sources";
+import { ycCandidates } from "../lib/yc";
 import type { JobWithDetail } from "../lib/types";
 import { KNOWN_BOARDS } from "../data/known-boards";
-import { INDIA_COMPANIES, slugVariants } from "../data/india-companies";
+import { INDIA_COMPANIES, slugVariants, type Candidate } from "../data/india-companies";
 
 const DAY = 24 * 60 * 60 * 1000;
 const ALL_ATS: AtsName[] = ["greenhouse", "lever", "ashby", "workable", "smartrecruiters", "keka"];
@@ -23,11 +24,18 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 async function discover(now: number) {
   console.log("Discovery: looking for Indian companies' job boards...");
+  let yc: Candidate[] = [];
+  try {
+    yc = await ycCandidates();
+    console.log(`Discovery: ${yc.length} Y Combinator companies to check (Indian, or fully remote and hiring).`);
+  } catch (e) {
+    console.warn("Discovery: couldn't load the Y Combinator list:", String(e).slice(0, 120));
+  }
   const probes: AtsCompany[] = [];
   const seen = new Set<string>();
-  for (const c of INDIA_COMPANIES) {
+  for (const c of [...INDIA_COMPANIES, ...yc]) {
     for (const slug of slugVariants(c)) {
-      for (const ats of ALL_ATS) {
+      for (const ats of c.ats ?? ALL_ATS) {
         // SmartRecruiters company IDs are case sensitive ("Freshworks").
         const boards = ats === "smartrecruiters" ? [cap(slug.replace(/-/g, ""))] : [slug];
         for (const board of boards) {
@@ -74,8 +82,13 @@ async function main() {
     const [ats, ...rest] = k.split(":");
     return { ats: ats as AtsName, board: rest.join(":"), name };
   });
+  // Job boards linked from this month's Hacker News "Who is hiring?" thread.
+  const hn = await hackerNewsOnce({});
+  if (hn.boards.length) console.log(`Hacker News: ${hn.boards.length} company job boards linked this month.`);
+
   const byKey = new Map<string, AtsCompany>();
-  for (const b of [...COMPANIES, ...discovered, ...KNOWN_BOARDS]) if (!byKey.has(keyOf(b))) byKey.set(keyOf(b), b);
+  for (const b of [...COMPANIES, ...discovered, ...KNOWN_BOARDS, ...hn.boards])
+    if (!byKey.has(keyOf(b))) byKey.set(keyOf(b), b);
   const boards = [...byKey.values()];
 
   // 3. Skip boards that keep failing (checked again later).

@@ -11,7 +11,11 @@ export type SourceId =
   | "adzuna"
   | "workable"
   | "smartrecruiters"
-  | "keka";
+  | "keka"
+  | "weworkremotely"
+  | "jobicy"
+  | "workingnomads"
+  | "hackernews";
 
 /** What the browser receives: small, no descriptions. */
 export type Job = {
@@ -66,4 +70,8 @@ export const SOURCE_LABELS: Record<SourceId, string> = {
   workable: "Workable",
   smartrecruiters: "SmartRecruiters",
   keka: "Keka",
+  weworkremotely: "We Work Remotely",
+  jobicy: "Jobicy",
+  workingnomads: "Working Nomads",
+  hackernews: "Hacker News",
 };
