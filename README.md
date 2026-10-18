@@ -85,6 +85,8 @@ So a crawler checks **hundreds** of them:
   company in `data/india-companies.ts` on all five systems and remembers which
   ones exist. Add Indian companies there by name.
 - Discovery also checks Y Combinator's Indian startups and fully remote YC companies that are hiring (from github.com/yc-oss/api), and every run adds company job boards linked in Hacker News' monthly "Who is hiring?" thread.
+- It also searches about 30 large companies' Workday careers sites (Walmart, Adobe, Salesforce, NVIDIA...), listed in `data/workday-boards.ts`.
+- **Internships:** with free `SERPAPI_KEY` (Google Jobs) and `JOOBLE_API_KEY` secrets set, it also searches job engines that index Internshala, LinkedIn, Naukri and Unstop. A role is marked Internship only when the listing's job type says so. Google Jobs runs once a day to stay inside SerpApi's free plan.
 - Boards that don't exist are skipped for a week, so the list cleans itself.
 - It runs on **GitHub Actions** every 4 hours (`.github/workflows/crawl.yml`),
   free for public repos. The website reads the saved list and picks up each

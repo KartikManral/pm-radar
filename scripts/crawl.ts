@@ -7,10 +7,22 @@
 
 import { COMPANIES, type AtsCompany, type AtsName } from "../lib/config";
 import { redis } from "../lib/redis";
-import { dedupe, enrichJobs, fetchBoard, fetchExtraSources, hackerNewsOnce, pool, type BoardOutcome } from "../lib/sources";
+import {
+  dedupe,
+  enrichJobs,
+  fetchBoard,
+  fetchExtraSources,
+  fromGoogleJobs,
+  fromJooble,
+  hackerNewsOnce,
+  pool,
+  type BoardOutcome,
+} from "../lib/sources";
+import { isRecent } from "../lib/classify";
 import { ycCandidates } from "../lib/yc";
 import type { JobWithDetail } from "../lib/types";
 import { KNOWN_BOARDS } from "../data/known-boards";
+import { WORKDAY_BOARDS } from "../data/workday-boards";
 import { INDIA_COMPANIES, slugVariants, type Candidate } from "../data/india-companies";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -65,6 +77,24 @@ async function discover(now: number) {
   return found;
 }
 
+/**
+ * Runs a paid-quota source at most once every `hours`, and reuses the saved
+ * result in between (so free search limits aren't used up every 4 hours).
+ */
+async function throttled(name: string, hours: number, enabled: boolean, run: () => Promise<JobWithDetail[]>) {
+  if (!enabled) return { name, jobs: [] as JobWithDetail[], note: "no key" };
+  const last = Number(await redis!.get(`src:${name}:at`)) || 0;
+  if (Date.now() - last < hours * 3_600_000) {
+    const saved = ((await redis!.get<JobWithDetail[]>(`src:${name}:jobs`)) ?? []).filter((j) => isRecent(j.postedAt));
+    return { name, jobs: saved, note: "saved" };
+  }
+  const jobs = await run();
+  const slim = jobs.map((j) => ({ ...j, description: j.description?.slice(0, 1500) }));
+  await redis!.set(`src:${name}:jobs`, slim);
+  await redis!.set(`src:${name}:at`, Date.now());
+  return { name, jobs, note: "fresh" };
+}
+
 async function main() {
   if (!redis) throw new Error("Set KV_REST_API_URL and KV_REST_API_TOKEN (or UPSTASH_REDIS_REST_*).");
   const started = Date.now();
@@ -87,7 +117,7 @@ async function main() {
   if (hn.boards.length) console.log(`Hacker News: ${hn.boards.length} company job boards linked this month.`);
 
   const byKey = new Map<string, AtsCompany>();
-  for (const b of [...COMPANIES, ...discovered, ...KNOWN_BOARDS, ...hn.boards])
+  for (const b of [...COMPANIES, ...discovered, ...KNOWN_BOARDS, ...WORKDAY_BOARDS, ...hn.boards])
     if (!byKey.has(keyOf(b))) byKey.set(keyOf(b), b);
   const boards = [...byKey.values()];
 
@@ -117,7 +147,30 @@ async function main() {
   // 5. Remote job boards (and Adzuna if keys are set).
   const extra = await fetchExtraSources({});
 
-  const jobs: JobWithDetail[] = dedupe([...results.map((r) => r.jobs), ...extra.lists]);
+  // 5a. Job search engines that index Internshala, LinkedIn, Naukri, Unstop...
+  const engines = await Promise.all([
+    throttled("googlejobs", 22, Boolean(process.env.SERPAPI_KEY), fromGoogleJobs),
+    throttled("jooble", 6, Boolean(process.env.JOOBLE_API_KEY), fromJooble),
+  ]);
+  for (const e of engines) extra.report.push({ name: e.name === "googlejobs" ? "Google Jobs" : "Jooble", ok: e.note !== "no key", count: e.jobs.length });
+  console.log("Job search engines:", engines.map((e) => `${e.name}=${e.note === "no key" ? "no key set" : `${e.jobs.length} (${e.note})`}`).join(", "));
+
+  // Company boards first, so the same role keeps its direct company link.
+  // Search engines often spell the company differently ("Razorpay Software
+  // Pvt Ltd") or the city ("Bengaluru, Karnataka"), so match on company + title.
+  const norm = (s: string) =>
+    s.toLowerCase().replace(/\b(pvt|private|ltd|limited|inc|llp|technologies|technology|software|india|solutions)\b/g, "").replace(/[^a-z0-9]/g, "");
+  const direct = dedupe([...results.map((r) => r.jobs), ...extra.lists]);
+  const known = new Set(direct.map((j) => `${norm(j.company)}|${norm(j.title)}`));
+  const fromEngines = engines
+    .flatMap((e) => e.jobs)
+    .filter((j) => {
+      const k = `${norm(j.company)}|${norm(j.title)}`;
+      if (known.has(k)) return false;
+      known.add(k);
+      return true;
+    });
+  const jobs: JobWithDetail[] = dedupe([direct, fromEngines]);
 
   // 5b. Fetch descriptions the board lists don't include, to read the
   // experience asked for and spot remote roles limited to other countries.
@@ -150,11 +203,15 @@ async function main() {
   const withRoles = results.filter((r) => r.jobs.length > 0).sort((a, b) => b.jobs.length - a.jobs.length);
   const withExp = jobs.filter((j) => j.expMin !== null).length;
   const byRegion = jobs.reduce<Record<string, number>>((acc, j) => ((acc[j.region] = (acc[j.region] ?? 0) + 1), acc), {});
+  const byLevel = jobs
+    .filter((j) => j.region !== "remote-restricted")
+    .reduce<Record<string, number>>((acc, j) => ((acc[j.level] = (acc[j.level] ?? 0) + 1), acc), {});
   const meta = {
     crawledAt: now,
     tookSeconds: Math.round((Date.now() - started) / 1000),
     roles: jobs.length,
     byRegion,
+    byLevel,
     withExperience: withExp,
     boardsTotal: boards.length,
     boardsChecked: results.length,
@@ -174,6 +231,7 @@ async function main() {
       `${withExp} with experience listed, from ` +
       `${withRoles.length} boards with roles; ${okBoards.length}/${results.length} boards responded.`
   );
+  console.log("Shown by default, by level:", JSON.stringify(byLevel));
   console.log("Top boards:", withRoles.slice(0, 15).map((r) => `${r.key}=${r.jobs.length}`).join(", "));
   console.log("Other sources:", extra.report.map((r) => `${r.name}=${r.ok ? r.count : "failed"}`).join(", "));
 }

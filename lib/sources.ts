@@ -18,7 +18,7 @@ import {
   remoteIsRestricted,
   toMs,
 } from "./classify";
-import { SOURCE_LABELS, type JobWithDetail, type SourceId } from "./types";
+import { SOURCE_LABELS, type JobWithDetail, type Level, type SourceId } from "./types";
 
 type FetchOpts = { fresh?: boolean; revalidate?: number };
 
@@ -32,7 +32,7 @@ async function getJson(url: string, opts: FetchOpts = {}, headers: Record<string
   return res.json();
 }
 
-const ATS_SOURCES: SourceId[] = ["greenhouse", "lever", "ashby", "workable", "smartrecruiters", "keka"];
+const ATS_SOURCES: SourceId[] = ["greenhouse", "lever", "ashby", "workable", "smartrecruiters", "keka", "workday"];
 const isAts = (s: SourceId) => ATS_SOURCES.includes(s);
 
 /** "grafanalabs" -> "Grafanalabs", "urban-company" -> "Urban Company" */
@@ -58,6 +58,10 @@ function makeJob(input: {
   url: string;
   postedAt: unknown;
   description?: string;
+  /** Set when the source states the job type (e.g. "Internship"). */
+  level?: Level;
+  /** Where the apply link goes, e.g. "Internshala" (default: the source's name). */
+  sourceLabel?: string;
 }): JobWithDetail | null {
   const title = decodeEntities(String(input.title || "")).trim();
   if (!title || !input.url || !isProductRole(title)) return null;
@@ -74,9 +78,9 @@ function makeJob(input: {
     company: input.company,
     location: location || "Remote",
     region,
-    level: levelFor(title),
+    level: input.level ?? levelFor(title),
     source: input.source,
-    sourceLabel: isAts(input.source) ? `${input.company} careers` : SOURCE_LABELS[input.source],
+    sourceLabel: input.sourceLabel ?? (isAts(input.source) ? `${input.company} careers` : SOURCE_LABELS[input.source]),
     url: input.url,
     postedAt,
     expMin: null,
@@ -287,6 +291,80 @@ async function fromKeka(c: AtsCompany, o: FetchOpts): Promise<BoardResult> {
   };
 }
 
+// Workday: used by many large companies (Walmart, Adobe, Salesforce...).
+// Their careers sites load jobs from a public JSON search at
+// {tenant}.{wdN}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs.
+// The board is written "tenant|wdN|site", e.g. "walmart|wd5|WalmartExternal".
+const WORKDAY_SEARCHES = ["product manager", "associate product manager", "product intern", "product owner", "product management"];
+
+async function postJson(url: string, body: unknown) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "PMRadar/1.0 (job aggregator)" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
+    cache: "no-store",
+  });
+  if (!res.ok) throw Object.assign(new Error(`${res.status} ${url}`), { status: res.status });
+  return res.json();
+}
+
+/** "Posted Today" / "Posted Yesterday" / "Posted 3 Days Ago" / "Posted 30+ Days Ago" -> ms */
+function workdayPosted(text: string, now = Date.now()): number | null {
+  const t = (text || "").toLowerCase();
+  if (t.includes("today")) return now;
+  if (t.includes("yesterday")) return now - 24 * 3_600_000;
+  if (t.includes("+")) return null; // 30+ days: too old
+  const n = t.match(/(\d+)\s+day/);
+  return n ? now - Number(n[1]) * 24 * 3_600_000 : null;
+}
+
+async function fromWorkday(c: AtsCompany, o: FetchOpts): Promise<BoardResult> {
+  void o;
+  const [tenant, wd, site] = c.board.split("|");
+  const host = `https://${tenant}.${wd}.myworkdayjobs.com`;
+  const api = `${host}/wday/cxs/${tenant}/${site}`;
+  const postings = new Map<string, any>();
+  let total = 0;
+  for (const q of WORKDAY_SEARCHES) {
+    // Workday returns at most 20 per page; read up to 3 pages for the main search.
+    for (let offset = 0; offset < (q === "product manager" ? 60 : 20); offset += 20) {
+      const d = await postJson(`${api}/jobs`, { appliedFacets: {}, limit: 20, offset, searchText: q });
+      if (offset === 0) total = Math.max(total, d.total ?? 0);
+      const list: any[] = d.jobPostings ?? [];
+      for (const p of list) if (p.externalPath) postings.set(p.externalPath, p);
+      if (list.length < 20 || offset + 20 >= (d.total ?? 0)) break;
+    }
+  }
+
+  // Only open the product roles from the last 30 days.
+  const candidates = [...postings.values()].filter(
+    (p) => isProductRole(decodeEntities(p.title ?? "")) && isRecent(workdayPosted(p.postedOn))
+  );
+  const jobs = await pool(candidates, 4, async (p) => {
+    try {
+      const d = await getJson(`${api}${p.externalPath}`, { fresh: true });
+      const info = d.jobPostingInfo ?? {};
+      const location = [info.location ?? p.locationsText, ...(info.additionalLocations ?? [])].filter(Boolean).join("; ");
+      return makeJob({
+        source: "workday",
+        board: c.board,
+        rawId: info.jobReqId ?? info.id ?? p.externalPath,
+        title: info.title ?? p.title,
+        company: c.name || prettyName(tenant),
+        location,
+        isRemote: /remote/i.test(`${info.remoteType ?? ""} ${location}`),
+        url: info.externalUrl ?? `${host}/${site}${p.externalPath}`,
+        postedAt: info.startDate ?? workdayPosted(p.postedOn),
+        description: htmlToText(info.jobDescription ?? ""),
+      });
+    } catch {
+      return null;
+    }
+  });
+  return { total, jobs };
+}
+
 const FETCHERS: Record<AtsName, (c: AtsCompany, o: FetchOpts) => Promise<BoardResult>> = {
   greenhouse: fromGreenhouse,
   lever: fromLever,
@@ -294,6 +372,7 @@ const FETCHERS: Record<AtsName, (c: AtsCompany, o: FetchOpts) => Promise<BoardRe
   workable: fromWorkable,
   smartrecruiters: fromSmartRecruiters,
   keka: fromKeka,
+  workday: fromWorkday,
 };
 
 export type BoardOutcome = {
@@ -592,6 +671,115 @@ async function fromAdzuna(o: FetchOpts) {
         description: htmlToText(String(j.description ?? "")),
       });
     });
+}
+
+// ---------- Job search engines (real internships from Indian job sites) ----------
+// Internshala, LinkedIn, Naukri and Unstop can't be copied directly, but
+// Google Jobs and Jooble index them. Both state the job type, so a role is
+// marked Internship only when the listing itself says it is one.
+
+/** Short stable id from a long string. */
+function shortHash(s: string) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+/** "3 days ago", "21 hours ago", "1 week ago" -> ms; "30+ days ago" / months -> null */
+export function agoToMs(text: string, now = Date.now()): number | null {
+  const t = (text || "").toLowerCase();
+  if (!t || t.includes("+") || /month|year/.test(t)) return null;
+  if (/just|today|now/.test(t)) return now;
+  const m = t.match(/(\d+)\s*(minute|hour|day|week)/);
+  if (!m) return null;
+  const unit = { minute: 60_000, hour: 3_600_000, day: 86_400_000, week: 7 * 86_400_000 }[m[2] as "day"];
+  return now - Number(m[1]) * unit;
+}
+
+const isInternshipType = (s: unknown) => /intern/i.test(String(s ?? ""));
+
+export const GOOGLE_JOBS_SEARCHES = ["product management intern", "product manager intern", "associate product manager"];
+
+/**
+ * Google Jobs through SerpApi (free plan: about 100 searches a month, so the
+ * crawler runs this once a day: 3 searches a day). Key: SERPAPI_KEY.
+ */
+export async function fromGoogleJobs(): Promise<JobWithDetail[]> {
+  const key = process.env.SERPAPI_KEY;
+  if (!key) return [];
+  const out: JobWithDetail[] = [];
+  for (const q of GOOGLE_JOBS_SEARCHES) {
+    const params = new URLSearchParams({ engine: "google_jobs", q, location: "India", gl: "in", hl: "en", api_key: key });
+    let data: any;
+    try {
+      data = await getJson(`https://serpapi.com/search.json?${params}`, { fresh: true });
+    } catch (e) {
+      console.warn("[jobs] Google Jobs search failed:", String(e).replace(key, "***").slice(0, 160));
+      continue;
+    }
+    for (const j of data.jobs_results ?? []) {
+      const ext = j.detected_extensions ?? {};
+      const apply = (j.apply_options ?? [])[0];
+      const job = makeJob({
+        source: "googlejobs",
+        rawId: shortHash(String(j.job_id ?? `${j.title}${j.company_name}`)),
+        title: j.title,
+        company: j.company_name || "Company not listed",
+        location: j.location || "India",
+        isRemote: ext.work_from_home === true,
+        url: apply?.link ?? j.share_link,
+        postedAt: agoToMs(ext.posted_at ?? (j.extensions ?? []).find((x: string) => /ago/i.test(x)) ?? ""),
+        description: String(j.description ?? "").slice(0, 8000),
+        level: isInternshipType(ext.schedule_type) ? "intern" : undefined,
+        sourceLabel: apply?.title ? String(apply.title).replace(/^apply (on|via)\s+/i, "") : j.via?.replace(/^via\s+/i, ""),
+      });
+      if (job) out.push(job);
+    }
+  }
+  return out;
+}
+
+export const JOOBLE_SEARCHES = ["product management intern", "product manager intern", "associate product manager", "product manager"];
+
+/** Jooble job search API (free key from https://jooble.org/api/about). Key: JOOBLE_API_KEY. */
+export async function fromJooble(): Promise<JobWithDetail[]> {
+  const key = process.env.JOOBLE_API_KEY;
+  if (!key) return [];
+  const out: JobWithDetail[] = [];
+  for (const keywords of JOOBLE_SEARCHES) {
+    let data: any;
+    try {
+      const res = await fetch(`https://jooble.org/api/${key}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ keywords, location: "India", page: "1" }),
+        signal: AbortSignal.timeout(15_000),
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      data = await res.json();
+    } catch (e) {
+      console.warn("[jobs] Jooble search failed:", String(e).replace(key, "***").slice(0, 160));
+      continue;
+    }
+    for (const j of data.jobs ?? []) {
+      const loc = String(j.location ?? "India");
+      const job = makeJob({
+        source: "jooble",
+        rawId: String(j.id ?? shortHash(String(j.link))),
+        title: htmlToText(String(j.title ?? ""), 200),
+        company: j.company || "Company not listed",
+        location: /remote/i.test(loc) || /india/i.test(loc) ? loc : `${loc}, India`,
+        url: j.link,
+        postedAt: j.updated,
+        description: htmlToText(String(j.snippet ?? "")),
+        level: isInternshipType(j.type) ? "intern" : undefined,
+        sourceLabel: j.source || "Jooble",
+      });
+      if (job) out.push(job);
+    }
+  }
+  return out;
 }
 
 // ---------- Run everything ----------

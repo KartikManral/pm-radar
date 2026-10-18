@@ -2,7 +2,7 @@ import type { Level, Region } from "./types";
 
 // Titles we count as product management roles.
 const PRODUCT_TITLE =
-  /(product\s+(manager|management|owner|lead|leader|intern|internship|head)|\b(apm|gpm)\b|associate\s+product\s+manager|head\s+of\s+product|chief\s+product|vp,?\s+(of\s+)?product|director,?\s+(of\s+)?product)/i;
+  /(product\s+(manager|management|owner|lead|leader|intern|internship|head|associate|trainee|fellow|apprentice)|\b(apm|gpm)\b|\bpm\s+intern|associate\s+product\s+manager|\bintern(ship)?\s*[-–—,:(|]\s*product\b|head\s+of\s+product|chief\s+product|vp,?\s+(of\s+)?product|director,?\s+(of\s+)?product)/i;
 
 // Titles that mention product but are a different job: analysts, operations,
 // design, marketing, engineering, program/project management, and so on.
@@ -69,7 +69,8 @@ export function experienceFor(title: string, description = ""): { min: number; m
   const found = experienceFrom(description);
   if (found) return found;
   if (/\b(intern|internship|trainee|apprentice)\b/i.test(title)) return { min: 0, max: 1 };
-  if (/\b(associate\s+product|apm|junior|jr\.?|graduate|new\s+grad|entry)\b/i.test(title)) return { min: 0, max: 2 };
+  if (/\b(associate\s+product|product\s+associate|apm|junior|jr\.?|graduate|new\s+grad|entry|fellow|rotational)\b/i.test(title))
+    return { min: 0, max: 2 };
   return null;
 }
 
@@ -86,11 +87,25 @@ export function remoteIsRestricted(description: string): boolean {
 
 export function levelFor(title: string): Level {
   if (/\b(intern|internship|trainee|apprentice)\b/i.test(title)) return "intern";
-  if (/\b(associate\s+product|apm|junior|jr\.?|graduate|new\s+grad|entry)\b/i.test(title))
+  if (
+    /\b(associate\s+product|product\s+associate|apm|junior|jr\.?|graduate|new\s+grad|entry|fellow|rotational)\b/i.test(title) ||
+    /product\s+(manager|owner)\s*(i|1)\b/i.test(title) // "Product Manager I"
+  )
     return "entry";
   if (/\b(senior|sr\.?|lead|principal|staff|group|director|head|vp|chief|gpm)\b/i.test(title))
     return "senior";
   return "pm";
+}
+
+/**
+ * Level from the title, corrected by the experience the post asks for:
+ * a plain "Product Manager" role that wants 0-2 years is really entry level.
+ */
+export function levelWithExperience(title: string, expMin: number | null, expMax: number | null): Level {
+  const level = levelFor(title);
+  if (level !== "pm" || expMin === null) return level;
+  if (expMin <= 1 || (expMax !== null && expMax <= 2)) return "entry";
+  return level;
 }
 
 const INDIA =

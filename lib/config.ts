@@ -17,7 +17,7 @@ export const SITE_URL =
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
     : "http://localhost:3000");
 
-export type AtsName = "greenhouse" | "lever" | "ashby" | "workable" | "smartrecruiters" | "keka";
+export type AtsName = "greenhouse" | "lever" | "ashby" | "workable" | "smartrecruiters" | "keka" | "workday";
 
 export type AtsCompany = {
   name?: string;
@@ -83,7 +83,8 @@ export const ADZUNA_SEARCHES = [
   { title: "product manager", pages: 3 },
   { title: "product intern", pages: 1 },
   { title: "product owner", pages: 1 },
-  { title: "product analyst", pages: 1 },
+  { title: "associate product manager", pages: 1 },
+  { title: "product management intern", pages: 1 },
 ];
 export const ADZUNA_REVALIDATE_SECONDS = 3 * 60 * 60;
 
@@ -108,8 +109,22 @@ export const EXTERNAL_SEARCHES: { group: string; note: string; links: ExternalLi
       { name: "Cutshort", url: "https://cutshort.io/jobs" },
       { name: "Shine", url: "https://www.shine.com/job-search/product-manager-jobs" },
       { name: "Y Combinator startups", url: "https://www.workatastartup.com/jobs?role=product" },
+    ],
+  },
+  {
+    group: "Internships and fresher roles",
+    note: "Where most product internships and 0-2 year roles in India are posted.",
+    links: [
       { name: "Internshala", url: "https://internshala.com/internships/product-management-internship/" },
-      { name: "Unstop", url: "https://unstop.com/jobs" },
+      { name: "LinkedIn internships", url: "https://www.linkedin.com/jobs/search/?keywords=product%20management%20intern&location=India&f_E=1" },
+      { name: "LinkedIn entry level", url: "https://www.linkedin.com/jobs/search/?keywords=associate%20product%20manager&location=India&f_E=2" },
+      { name: "Unstop", url: "https://unstop.com/internships" },
+      { name: "Naukri freshers", url: "https://www.naukri.com/associate-product-manager-jobs?experience=0" },
+      { name: "Indeed internships", url: "https://in.indeed.com/jobs?q=product+management+intern&l=India" },
+      { name: "Wellfound internships", url: "https://wellfound.com/role/l/product-manager-intern/india" },
+      { name: "Google APM", url: "https://www.google.com/about/careers/applications/jobs/results/?q=associate%20product%20manager" },
+      { name: "Microsoft students", url: "https://jobs.careers.microsoft.com/global/en/search?q=product%20manager&lc=India&exp=Students%20and%20graduates" },
+      { name: "Uber APM", url: "https://www.uber.com/global/en/careers/list/?query=associate%20product%20manager" },
     ],
   },
   {

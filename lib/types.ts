@@ -12,6 +12,9 @@ export type SourceId =
   | "workable"
   | "smartrecruiters"
   | "keka"
+  | "workday"
+  | "googlejobs"
+  | "jooble"
   | "weworkremotely"
   | "jobicy"
   | "workingnomads"
@@ -70,6 +73,9 @@ export const SOURCE_LABELS: Record<SourceId, string> = {
   workable: "Workable",
   smartrecruiters: "SmartRecruiters",
   keka: "Keka",
+  workday: "Workday",
+  googlejobs: "Google Jobs",
+  jooble: "Jooble",
   weworkremotely: "We Work Remotely",
   jobicy: "Jobicy",
   workingnomads: "Working Nomads",
