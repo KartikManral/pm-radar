@@ -739,47 +739,76 @@ export async function fromGoogleJobs(): Promise<JobWithDetail[]> {
   return out;
 }
 
-export const JOOBLE_SEARCHES = ["product management intern", "product manager intern", "associate product manager", "product manager"];
+// Search -> how many result pages to read. Weighted towards internships and
+// entry-level roles, which are rare on company job boards.
+export const JOOBLE_SEARCHES: [string, number][] = [
+  ["product management intern", 3],
+  ["product management internship", 2],
+  ["product manager intern", 2],
+  ["product intern", 2],
+  ["apm intern", 1],
+  ["product management trainee", 1],
+  ["product owner intern", 1],
+  ["associate product manager", 3],
+  ["junior product manager", 1],
+  ["product associate", 1],
+  ["product manager fresher", 1],
+  ["product manager", 3],
+  ["product owner", 1],
+];
 
 /** Jooble job search API (free key from https://jooble.org/api/about). Key: JOOBLE_API_KEY. */
 export async function fromJooble(): Promise<JobWithDetail[]> {
   const key = process.env.JOOBLE_API_KEY;
   if (!key) return [];
   const out: JobWithDetail[] = [];
-  for (const keywords of JOOBLE_SEARCHES) {
-    let data: any;
-    try {
-      const res = await fetch(`https://jooble.org/api/${key}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ keywords, location: "India", page: "1" }),
-        signal: AbortSignal.timeout(15_000),
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      data = await res.json();
-    } catch (e) {
-      console.warn("[jobs] Jooble search failed:", String(e).replace(key, "***").slice(0, 160));
-      continue;
-    }
-    for (const j of data.jobs ?? []) {
-      const loc = String(j.location ?? "India");
-      const job = makeJob({
-        source: "jooble",
-        rawId: String(j.id ?? shortHash(String(j.link))),
-        title: htmlToText(String(j.title ?? ""), 200),
-        company: j.company || "Company not listed",
-        location: /remote/i.test(loc) || /india/i.test(loc) ? loc : `${loc}, India`,
-        url: j.link,
-        postedAt: j.updated,
-        description: htmlToText(String(j.snippet ?? "")),
-        level: isInternshipType(j.type) ? "intern" : undefined,
-        sourceLabel: j.source || "Jooble",
-      });
-      if (job) out.push(job);
+  let blocked = false;
+  for (const [keywords, pages] of JOOBLE_SEARCHES) {
+    for (let page = 1; page <= pages && !blocked; page++) {
+      let data: any;
+      try {
+        const res = await fetch(`https://jooble.org/api/${key}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ keywords, location: "India", page: String(page) }),
+          signal: AbortSignal.timeout(15_000),
+          cache: "no-store",
+        });
+        // Over the key's limit: stop searching and keep what we have.
+        if (res.status === 403 || res.status === 429) {
+          blocked = true;
+          console.warn(`[jobs] Jooble limit reached after "${keywords}" page ${page}.`);
+          break;
+        }
+        if (!res.ok) throw new Error(String(res.status));
+        data = await res.json();
+      } catch (e) {
+        console.warn("[jobs] Jooble search failed:", String(e).replace(key, "***").slice(0, 160));
+        break;
+      }
+      const list: any[] = data.jobs ?? [];
+      for (const j of list) {
+        const loc = String(j.location ?? "India");
+        const job = makeJob({
+          source: "jooble",
+          rawId: String(j.id ?? shortHash(String(j.link))),
+          title: htmlToText(String(j.title ?? ""), 200),
+          company: j.company || "Company not listed",
+          location: /remote/i.test(loc) || /india/i.test(loc) ? loc : `${loc}, India`,
+          url: j.link,
+          postedAt: j.updated,
+          description: htmlToText(String(j.snippet ?? "")),
+          level: isInternshipType(j.type) ? "intern" : undefined,
+          sourceLabel: j.source || "Jooble",
+        });
+        if (job) out.push(job);
+      }
+      if (list.length === 0) break; // no more pages for this search
     }
   }
-  return out;
+  // The same posting often comes back from several searches.
+  const seen = new Set<string>();
+  return out.filter((j) => (seen.has(j.id) ? false : (seen.add(j.id), true)));
 }
 
 // ---------- Run everything ----------
