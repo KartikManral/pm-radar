@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PRACTICE_LABELS, practiceTypesFor, practiceUrl, prepUrl } from "@/lib/practice";
 import type { SavedResume } from "@/lib/storage";
 import type { Job, MatchResult } from "@/lib/types";
 
@@ -122,6 +123,21 @@ export default function MatchPanel({ job, resume }: { job: Job; resume: SavedRes
             ))}
           </ul>
         </div>
+      </div>
+
+      <div className="match-block practice">
+        <h4>Practise for this interview</h4>
+        <p className="practice-links">
+          <a className="btn btn-outline" href={prepUrl(job)} target="_blank" rel="noopener">
+            Questions for {job.company}
+          </a>
+          {practiceTypesFor(result.gaps).map((t) => (
+            <a key={t} className="btn btn-quiet" href={practiceUrl(t)} target="_blank" rel="noopener">
+              Practise {PRACTICE_LABELS[t]} questions
+            </a>
+          ))}
+        </p>
+        <p className="fine">Free mock questions with AI feedback on Product Reps.</p>
       </div>
 
       {result.actions.length > 0 && (

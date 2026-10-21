@@ -14,6 +14,7 @@ import {
 import { loadResume, type SavedResume } from "@/lib/storage";
 import { ago, BUCKET_LABEL, bucketFor, type Bucket } from "@/lib/time";
 import { LEVEL_LABELS, type Job, type Level } from "@/lib/types";
+import { prepUrl } from "@/lib/practice";
 import MatchPanel from "./MatchPanel";
 import ResumeSheet from "./ResumeSheet";
 import SubscribeSheet from "./SubscribeSheet";
@@ -345,6 +346,16 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
                     >
                       {openMatch === j.id ? "Hide match" : "Check my match"}
                     </button>
+                    <a
+                      className="btn btn-quiet"
+                      href={prepUrl(j)}
+                      target="_blank"
+                      rel="noopener"
+                      title={`Practise interview questions for ${j.company} on Product Reps`}
+                    >
+                      <span className="hide-sm">Prep for this role</span>
+                      <span className="show-sm">Prep</span>
+                    </a>
                     <a className="btn btn-primary" href={j.url} target="_blank" rel="noopener noreferrer">
                       Apply
                     </a>

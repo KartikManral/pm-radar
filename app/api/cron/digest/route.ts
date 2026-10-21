@@ -3,6 +3,7 @@ import { SITE_NAME, SITE_URL } from "@/lib/config";
 import { digestHtml, digestText, FROM, mailer } from "@/lib/email";
 import { ALL_LEVELS, ALL_REGIONS, matchesPrefs, parseList } from "@/lib/filters";
 import { getJobsFresh, toPublic } from "@/lib/jobs";
+import { fetchTodayQuestion } from "@/lib/practice";
 import { redis, type Subscriber } from "@/lib/redis";
 
 export const runtime = "nodejs";
@@ -36,6 +37,9 @@ export async function GET(req: Request) {
   if (Object.keys(firstSeen).length) await redis.hset("jobs:seen", firstSeen);
   if (stale.length) await redis.hdel("jobs:seen", ...stale);
 
+  // One practice question from Product Reps, the same for every subscriber today.
+  const practice = await fetchTodayQuestion();
+
   const emails = (await redis.smembers("subs")) as string[];
   let sent = 0;
   let skipped = 0;
@@ -66,8 +70,8 @@ export async function GET(req: Request) {
         from: FROM(),
         to: email,
         subject: `${fresh.length} new PM ${fresh.length === 1 ? "role" : "roles"} today | ${SITE_NAME}`,
-        html: digestHtml(picks, sub.token, intro),
-        text: digestText(picks, sub.token, intro),
+        html: digestHtml(picks, sub.token, intro, practice),
+        text: digestText(picks, sub.token, intro, practice),
         headers: { "List-Unsubscribe": `<${unsubUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
       });
       await redis.hset(`sub:${email}`, { lastSentAt: now });

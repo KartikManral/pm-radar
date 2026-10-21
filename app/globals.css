@@ -752,6 +752,9 @@ p {
   gap: 8px;
 }
 @media (max-width: 699px) {
+  .job-actions {
+    flex-wrap: wrap;
+  }
   .job-actions .btn {
     flex: 1;
   }
@@ -1197,5 +1200,19 @@ legend {
   *::after {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* ---------- Practice links (Product Reps) ---------- */
+.practice-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+@media (max-width: 699px) {
+  .practice-links .btn {
+    white-space: normal;
+    text-align: center;
   }
 }

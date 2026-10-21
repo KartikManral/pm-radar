@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { SITE_NAME, SITE_URL } from "./config";
+import type { TodayQuestion } from "./practice";
 import { LEVEL_LABELS, type Job } from "./types";
 
 // Uses any SMTP server. Easiest free option: a Gmail account with an
@@ -28,7 +29,20 @@ function ago(ms: number | null) {
   return `${Math.round(h / 24)}d ago`;
 }
 
-export function digestHtml(jobs: Job[], token: string, intro: string) {
+function practiceHtml(p: TodayQuestion | null) {
+  if (!p) return "";
+  return `
+      <tr><td style="padding:20px 0 4px">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#F6F7F5;border-radius:8px"><tr><td style="padding:16px">
+          <div style="font:700 12px Arial,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#5A6168">Today's practice question</div>
+          <div style="font:600 16px/1.4 Arial,sans-serif;color:#131619;margin-top:6px">${esc(p.question)}</div>
+          <div style="font:12px/1.5 Arial,sans-serif;color:#5A6168;margin-top:4px">${esc(p.categoryLabel)} &nbsp;|&nbsp; ${esc(p.difficulty)} &nbsp;|&nbsp; ${p.minutes} min</div>
+          <a href="${esc(p.url)}" style="display:inline-block;margin-top:10px;font:600 13px Arial,sans-serif;color:#0F766E">Answer it on Product Reps and get AI feedback</a>
+        </td></tr></table>
+      </td></tr>`;
+}
+
+export function digestHtml(jobs: Job[], token: string, intro: string, practice: TodayQuestion | null = null) {
   const rows = jobs
     .map(
       (j) => `
@@ -49,6 +63,7 @@ export function digestHtml(jobs: Job[], token: string, intro: string) {
       <tr><td style="font:700 20px Arial,sans-serif;color:#131619">${SITE_NAME}</td></tr>
       <tr><td style="font:15px/1.5 Arial,sans-serif;color:#131619;padding:8px 0 4px">${esc(intro)}</td></tr>
       ${rows}
+      ${practiceHtml(practice)}
       <tr><td style="padding-top:18px;font:14px Arial,sans-serif">
         <a href="${SITE_URL}" style="color:#0F766E;font-weight:600">See all roles and check your resume match</a>
       </td></tr>
@@ -60,11 +75,12 @@ export function digestHtml(jobs: Job[], token: string, intro: string) {
   </td></tr></table></body></html>`;
 }
 
-export function digestText(jobs: Job[], token: string, intro: string) {
+export function digestText(jobs: Job[], token: string, intro: string, practice: TodayQuestion | null = null) {
   return [
     intro,
     "",
     ...jobs.map((j) => `${j.title} - ${j.company} (${j.location})\n${j.url}\n`),
+    ...(practice ? [`Today's practice question (${practice.categoryLabel}): ${practice.question}`, `Answer it on Product Reps: ${practice.url}`, ""] : []),
     `All roles: ${SITE_URL}`,
     `Unsubscribe: ${SITE_URL}/api/unsubscribe?token=${token}`,
   ].join("\n");
