@@ -17,6 +17,9 @@ export const SITE_URL =
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
     : "http://localhost:3000");
 
+// Product Reps: Kartik's PM interview-prep app, linked from the top bar.
+export const PRODUCT_REPS_URL = "https://product-reps-lhcq.vercel.app/";
+
 export type AtsName = "greenhouse" | "lever" | "ashby" | "workable" | "smartrecruiters" | "keka" | "workday";
 
 export type AtsCompany = {

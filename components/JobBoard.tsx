@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SITE_NAME, type ExternalLink } from "@/lib/config";
+import { PRODUCT_REPS_URL, SITE_NAME, type ExternalLink } from "@/lib/config";
 import {
   EXP_BUCKETS,
   expLabel,
@@ -144,6 +144,17 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
             {SITE_NAME}
           </a>
           <nav className="topbar-actions">
+            <a
+              className="btn btn-quiet"
+              href={`${PRODUCT_REPS_URL}?ref=pm-radar`}
+              target="_blank"
+              rel="noopener"
+              aria-label="Product Reps: practice PM interview questions"
+              title="Practice PM interview questions on Product Reps"
+            >
+              <span className="hide-sm">Product Reps</span>
+              <span className="show-sm">Prep</span>
+            </a>
             <button className="btn btn-quiet" onClick={() => subRef.current?.showModal()} aria-label="Daily email">
               <span className="hide-sm">Daily email</span>
               <span className="show-sm">Email</span>
