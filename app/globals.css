@@ -79,6 +79,9 @@
 }
 html {
   -webkit-text-size-adjust: 100%;
+  /* Nothing may push the page sideways on phones. */
+  overflow-x: hidden; /* older iPhones */
+  overflow-x: clip;
 }
 body {
   margin: 0;
@@ -285,6 +288,28 @@ p {
   }
   .topbar-actions {
     gap: 6px;
+  }
+  /* The whole top bar (name + buttons) slides sideways when it doesn't fit,
+     instead of widening the page. */
+  .topbar-inner {
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .topbar-inner::-webkit-scrollbar {
+    display: none;
+  }
+  .topbar-inner > * {
+    flex: none;
+  }
+  .topbar-inner::after {
+    content: "";
+    flex: none;
+    width: 1px; /* keeps the right padding when scrolled to the end */
+  }
+  .topbar-actions .btn {
+    white-space: nowrap;
   }
   .topbar-actions .btn {
     padding: 0 11px;
