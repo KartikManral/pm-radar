@@ -6,7 +6,7 @@ import { MOCK_MATCH } from "@/lib/mock";
 import { redis, underDailyLimit } from "@/lib/redis";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 const DAILY_LIMIT = Number(process.env.MATCH_DAILY_LIMIT || 25);
 
