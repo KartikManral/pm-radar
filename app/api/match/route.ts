@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { analyzeMatch } from "@/lib/gemini";
 import { findJob, getDescription, MOCK_MODE } from "@/lib/jobs";
 import { MOCK_MATCH } from "@/lib/mock";
-import { underDailyLimit } from "@/lib/redis";
+import { redis, underDailyLimit } from "@/lib/redis";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -17,6 +18,15 @@ export async function POST(req: Request) {
   if (MOCK_MODE) {
     await new Promise((r) => setTimeout(r, 1200));
     return NextResponse.json(MOCK_MATCH);
+  }
+
+  // Same resume + same job = same answer. Serve it instantly and don't spend AI quota.
+  const cacheKey = `match:${createHash("sha256").update(jobId + "|" + resume).digest("hex").slice(0, 40)}`;
+  try {
+    const hit = redis ? await redis.get(cacheKey) : null;
+    if (hit) return NextResponse.json(typeof hit === "string" ? JSON.parse(hit) : hit);
+  } catch {
+    /* cache is optional */
   }
 
   const ip = (req.headers.get("x-forwarded-for") || "local").split(",")[0].trim();
@@ -37,6 +47,11 @@ export async function POST(req: Request) {
         { status: 422 }
       );
     const result = await analyzeMatch(resume, { ...job, description });
+    try {
+      if (redis) await redis.set(cacheKey, JSON.stringify(result), { ex: 60 * 60 * 24 * 7 });
+    } catch {
+      /* cache is optional */
+    }
     return NextResponse.json(result);
   } catch (e: any) {
     const msg = String(e?.message ?? e);
