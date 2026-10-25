@@ -781,6 +781,25 @@ export const JOOBLE_SEARCHES: [string, number][] = [
   ["product intern work from home", 1],
 ];
 
+/**
+ * Where a Jooble listing is. The search asks for India, but Jooble also returns
+ * listings from other countries (especially for "remote" searches), so the place
+ * must come from the listing itself. Never assume a listing is in India just
+ * because we searched there: a US "[Remote]" role would show up as an India job.
+ */
+export function joobleWhere(title: string, rawLocation: unknown) {
+  const loc = String(rawLocation ?? "").trim();
+  return {
+    // A listing with no place at all keeps "India", the place we searched.
+    location: loc || "India",
+    // Names an Indian place (or says nothing): an India role, even if it can be done remotely.
+    region: !loc || regionFor(loc, false) === "india" ? ("india" as const) : undefined,
+    // "[Remote] ..." in the title or "Remote" in the place. Otherwise regionFor decides:
+    // remote roles in other countries become "remote-restricted"; on-site ones are dropped.
+    isRemote: /\bremote\b/i.test(`${title} ${loc}`),
+  };
+}
+
 /** Jooble job search API (free key from https://jooble.org/api/about). Key: JOOBLE_API_KEY. */
 export async function fromJooble(): Promise<JobWithDetail[]> {
   const key = process.env.JOOBLE_API_KEY;
@@ -812,13 +831,14 @@ export async function fromJooble(): Promise<JobWithDetail[]> {
       }
       const list: any[] = data.jobs ?? [];
       for (const j of list) {
-        const loc = String(j.location ?? "India");
+        const title = htmlToText(String(j.title ?? ""), 200);
+        const where = joobleWhere(title, j.location);
         const job = makeJob({
           source: "jooble",
           rawId: String(j.id ?? shortHash(String(j.link))),
-          title: htmlToText(String(j.title ?? ""), 200),
+          title,
           company: j.company || "Company not listed",
-          location: /remote/i.test(loc) || /india/i.test(loc) ? loc : `${loc}, India`,
+          ...where,
           url: j.link,
           postedAt: j.updated,
           description: htmlToText(String(j.snippet ?? "")),

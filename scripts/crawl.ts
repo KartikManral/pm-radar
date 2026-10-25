@@ -83,17 +83,25 @@ async function discover(now: number) {
  * Runs a paid-quota source at most once every `hours`, and reuses the saved
  * result in between (so free search limits aren't used up every 4 hours).
  */
-async function throttled(name: string, hours: number, enabled: boolean, run: () => Promise<JobWithDetail[]>) {
+async function throttled(
+  name: string,
+  hours: number,
+  enabled: boolean,
+  run: () => Promise<JobWithDetail[]>,
+  // Bump this to throw away what was saved and fetch again on the next run
+  // (for example after fixing how a source's jobs are read).
+  version = ""
+) {
   if (!enabled) return { name, jobs: [] as JobWithDetail[], note: "no key" };
-  const last = Number(await redis!.get(`src:${name}:at`)) || 0;
+  const last = Number(await redis!.get(`src:${name}${version}:at`)) || 0;
   if (Date.now() - last < hours * 3_600_000) {
-    const saved = ((await redis!.get<JobWithDetail[]>(`src:${name}:jobs`)) ?? []).filter((j) => isFresh(j));
+    const saved = ((await redis!.get<JobWithDetail[]>(`src:${name}${version}:jobs`)) ?? []).filter((j) => isFresh(j));
     return { name, jobs: saved, note: "saved" };
   }
   const jobs = await run();
   const slim = jobs.map((j) => ({ ...j, description: j.description?.slice(0, 1500) }));
-  await redis!.set(`src:${name}:jobs`, slim);
-  await redis!.set(`src:${name}:at`, Date.now());
+  await redis!.set(`src:${name}${version}:jobs`, slim);
+  await redis!.set(`src:${name}${version}:at`, Date.now());
   return { name, jobs, note: "fresh" };
 }
 
@@ -152,7 +160,7 @@ async function main() {
   // 5a. Job search engines that index Internshala, LinkedIn, Naukri, Unstop...
   const engines = await Promise.all([
     throttled("googlejobs", 22, Boolean(process.env.SERPAPI_KEY), fromGoogleJobs),
-    throttled("jooble", 6, Boolean(process.env.JOOBLE_API_KEY), fromJooble),
+    throttled("jooble", 6, Boolean(process.env.JOOBLE_API_KEY), fromJooble, "-v2"), // v2: fixed locations, refresh now
     // Adzuna's free plan is about 2,500 calls a month, so it refreshes every 6 hours.
     throttled(
       "adzuna",
