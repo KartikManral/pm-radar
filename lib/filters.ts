@@ -1,3 +1,4 @@
+import { INTERN_MAX_AGE_DAYS } from "./classify";
 import type { Job, Level, Region } from "./types";
 
 export type Prefs = { regions: Region[]; levels: Level[] };
@@ -51,13 +52,20 @@ export function expLabel(j: Job): string | null {
 export type Recency = "30" | "1" | "3" | "7" | "14";
 
 export const RECENCY: { id: Recency; label: string }[] = [
-  { id: "30", label: "Last 30 days" },
+  { id: "30", label: "Last 30 days (internships 60)" },
   { id: "14", label: "Last 2 weeks" },
   { id: "7", label: "Last 7 days" },
   { id: "3", label: "Last 3 days" },
   { id: "1", label: "Last 24 hours" },
 ];
 
+/**
+ * Is the role inside the chosen window? The widest window gives internships 60
+ * days. Roles with no posting date only show in the widest window, because we
+ * can't tell how old they are.
+ */
 export function withinDays(j: Job, days: number, now: number) {
-  return j.postedAt != null && now - j.postedAt < days * 24 * 3_600_000;
+  if (j.postedAt == null) return days >= 30;
+  const limit = j.level === "intern" && days >= 30 ? INTERN_MAX_AGE_DAYS : days;
+  return now - j.postedAt < limit * 24 * 3_600_000;
 }

@@ -21,3 +21,25 @@ export function saveResume(r: SavedResume | null) {
     /* ignore: resume still works for this visit */
   }
 }
+
+// Listings this visitor reported are hidden right away, even before enough
+// reports come in to hide them for everyone.
+const HIDDEN_KEY = "pmradar.hidden.v1";
+
+export function loadHidden(): string[] {
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list.filter((x) => typeof x === "string").slice(-500) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveHidden(ids: string[]) {
+  try {
+    window.localStorage.setItem(HIDDEN_KEY, JSON.stringify(ids.slice(-500)));
+  } catch {
+    /* ignore: the listing is still hidden for this visit */
+  }
+}

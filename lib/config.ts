@@ -80,14 +80,21 @@ export const REMOTE_BOARDS = {
 
 // Adzuna: a job search API that gathers listings from many Indian job sites.
 // Free developer key at https://developer.adzuna.com (ADZUNA_APP_ID, ADZUNA_APP_KEY).
-// Free tier allows about 2,500 calls a month, so results are cached for 3 hours
-// and only 6 searches run per refresh (about 1,600 calls a month).
-export const ADZUNA_SEARCHES = [
+// Free tier allows about 2,500 calls a month. Each refresh makes one call per
+// "page" below (13 calls). The crawler refreshes Adzuna every 6 hours, which is
+// about 1,560 calls a month. If you add searches, keep calls x 4 x 30 under 2,500.
+// "days" is how far back to look (internships stay open longer, so 60).
+export const ADZUNA_SEARCHES: { title: string; pages: number; days?: number }[] = [
   { title: "product manager", pages: 3 },
-  { title: "product intern", pages: 1 },
+  { title: "associate product manager", pages: 2 },
+  { title: "product intern", pages: 1, days: 60 },
+  { title: "product management intern", pages: 1, days: 60 },
+  { title: "product manager intern", pages: 1, days: 60 },
+  { title: "product management trainee", pages: 1, days: 60 },
+  { title: "product trainee", pages: 1, days: 60 },
+  { title: "product associate", pages: 1 },
+  { title: "junior product manager", pages: 1 },
   { title: "product owner", pages: 1 },
-  { title: "associate product manager", pages: 1 },
-  { title: "product management intern", pages: 1 },
 ];
 export const ADZUNA_REVALIDATE_SECONDS = 3 * 60 * 60;
 

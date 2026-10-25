@@ -12,13 +12,15 @@ import {
   enrichJobs,
   fetchBoard,
   fetchExtraSources,
+  fromAdzuna,
   fromGoogleJobs,
   fromJooble,
   hackerNewsOnce,
   pool,
   type BoardOutcome,
 } from "../lib/sources";
-import { isRecent } from "../lib/classify";
+import { isFresh } from "../lib/classify";
+import { looksLikeFeeScam } from "../lib/scam";
 import { ycCandidates } from "../lib/yc";
 import type { JobWithDetail } from "../lib/types";
 import { KNOWN_BOARDS } from "../data/known-boards";
@@ -85,7 +87,7 @@ async function throttled(name: string, hours: number, enabled: boolean, run: () 
   if (!enabled) return { name, jobs: [] as JobWithDetail[], note: "no key" };
   const last = Number(await redis!.get(`src:${name}:at`)) || 0;
   if (Date.now() - last < hours * 3_600_000) {
-    const saved = ((await redis!.get<JobWithDetail[]>(`src:${name}:jobs`)) ?? []).filter((j) => isRecent(j.postedAt));
+    const saved = ((await redis!.get<JobWithDetail[]>(`src:${name}:jobs`)) ?? []).filter((j) => isFresh(j));
     return { name, jobs: saved, note: "saved" };
   }
   const jobs = await run();
@@ -145,14 +147,22 @@ async function main() {
   if (Object.keys(updates).length) await redis.hset("boards:health", updates);
 
   // 5. Remote job boards (and Adzuna if keys are set).
-  const extra = await fetchExtraSources({});
+  const extra = await fetchExtraSources({}, { adzuna: false });
 
   // 5a. Job search engines that index Internshala, LinkedIn, Naukri, Unstop...
   const engines = await Promise.all([
     throttled("googlejobs", 22, Boolean(process.env.SERPAPI_KEY), fromGoogleJobs),
     throttled("jooble", 6, Boolean(process.env.JOOBLE_API_KEY), fromJooble),
+    // Adzuna's free plan is about 2,500 calls a month, so it refreshes every 6 hours.
+    throttled(
+      "adzuna",
+      6,
+      Boolean(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY),
+      async () => (await fromAdzuna({ fresh: true })).filter((j): j is JobWithDetail => Boolean(j))
+    ),
   ]);
-  for (const e of engines) extra.report.push({ name: e.name === "googlejobs" ? "Google Jobs" : "Jooble", ok: e.note !== "no key", count: e.jobs.length });
+  const ENGINE_LABEL: Record<string, string> = { googlejobs: "Google Jobs", jooble: "Jooble", adzuna: "Adzuna (India job sites)" };
+  for (const e of engines) extra.report.push({ name: ENGINE_LABEL[e.name] ?? e.name, ok: e.note !== "no key", count: e.jobs.length });
   console.log("Job search engines:", engines.map((e) => `${e.name}=${e.note === "no key" ? "no key set" : `${e.jobs.length} (${e.note})`}`).join(", "));
 
   // Company boards first, so the same role keeps its direct company link.
@@ -164,6 +174,8 @@ async function main() {
   const known = new Set(direct.map((j) => `${norm(j.company)}|${norm(j.title)}`));
   const fromEngines = engines
     .flatMap((e) => e.jobs)
+    // Saved results from before the fee filter existed may still hold listings that ask for money.
+    .filter((j) => !looksLikeFeeScam(`${j.title}\n${j.description ?? ""}`))
     .filter((j) => {
       const k = `${norm(j.company)}|${norm(j.title)}`;
       if (known.has(k)) return false;
@@ -227,7 +239,7 @@ async function main() {
   await redis.set("jobs:meta", meta);
 
   console.log(
-    `Done in ${meta.tookSeconds}s: ${jobs.length} roles from the last 30 days (${JSON.stringify(byRegion)}), ` +
+    `Done in ${meta.tookSeconds}s: ${jobs.length} roles from the last 30 days, internships 60 (${JSON.stringify(byRegion)}), ` +
       `${withExp} with experience listed, from ` +
       `${withRoles.length} boards with roles; ${okBoards.length}/${results.length} boards responded.`
   );

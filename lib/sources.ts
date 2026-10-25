@@ -8,6 +8,7 @@ import {
   type AtsName,
 } from "./config";
 import {
+  AGGREGATOR_SOURCES,
   decodeEntities,
   experienceFor,
   htmlToText,
@@ -18,6 +19,7 @@ import {
   remoteIsRestricted,
   toMs,
 } from "./classify";
+import { looksLikeFeeScam } from "./scam";
 import { SOURCE_LABELS, type JobWithDetail, type Level, type SourceId } from "./types";
 
 type FetchOpts = { fresh?: boolean; revalidate?: number };
@@ -69,7 +71,12 @@ function makeJob(input: {
   const region = input.region ?? regionFor(location, input.isRemote);
   if (!region) return null;
   const postedAt = toMs(input.postedAt);
-  if (!isRecent(postedAt)) return null;
+  const level = input.level ?? levelFor(title);
+  const aggregator = AGGREGATOR_SOURCES.has(input.source);
+  // Internships stay listed for 60 days; job search sites may leave out the date.
+  if (!isRecent(postedAt, Date.now(), { intern: level === "intern", allowUndated: aggregator })) return null;
+  // Job search sites sometimes carry listings that ask the candidate to pay.
+  if (aggregator && looksLikeFeeScam(`${title}\n${input.description ?? ""}`)) return null;
   const job: JobWithDetail = {
     id: [input.source, input.board, input.rawId].filter(Boolean).join("~"),
     rawId: String(input.rawId),
@@ -78,7 +85,7 @@ function makeJob(input: {
     company: input.company,
     location: location || "Remote",
     region,
-    level: input.level ?? levelFor(title),
+    level,
     source: input.source,
     sourceLabel: input.sourceLabel ?? (isAts(input.source) ? `${input.company} careers` : SOURCE_LABELS[input.source]),
     url: input.url,
@@ -337,9 +344,12 @@ async function fromWorkday(c: AtsCompany, o: FetchOpts): Promise<BoardResult> {
     }
   }
 
-  // Only open the product roles from the last 30 days.
+  // Only open the product roles from the last 30 days (60 for internships).
   const candidates = [...postings.values()].filter(
-    (p) => isProductRole(decodeEntities(p.title ?? "")) && isRecent(workdayPosted(p.postedOn))
+    (p) => {
+      const title = decodeEntities(p.title ?? "");
+      return isProductRole(title) && isRecent(workdayPosted(p.postedOn), Date.now(), { intern: levelFor(title) === "intern" });
+    }
   );
   const jobs = await pool(candidates, 4, async (p) => {
     try {
@@ -626,7 +636,7 @@ export function hackerNewsOnce(o: FetchOpts = {}) {
 const ADZUNA_SKIP_CATEGORY = /sales|healthcare|nursing|retail|manufacturing|pharma|logistics|trade|construction|hospitality|teaching/i;
 const ADZUNA_SKIP_TITLE = /pharma|medical|sales|insurance|loan|mutual fund|brand manager|area manager|regional|territory/i;
 
-async function fromAdzuna(o: FetchOpts) {
+export async function fromAdzuna(o: FetchOpts) {
   const id = process.env.ADZUNA_APP_ID;
   const key = process.env.ADZUNA_APP_KEY;
   if (!id || !key) return [];
@@ -638,7 +648,7 @@ async function fromAdzuna(o: FetchOpts) {
         app_key: key,
         results_per_page: "50",
         title_only: s.title,
-        max_days_old: "30",
+        max_days_old: String(s.days ?? 30),
         sort_by: "date",
         "content-type": "application/json",
       });
@@ -696,6 +706,9 @@ export function agoToMs(text: string, now = Date.now()): number | null {
   return now - Number(m[1]) * unit;
 }
 
+/** "30+ days ago", "2 months ago": the post is old, not just undated. */
+export const agoTooOld = (text: string) => /\+|month|year/i.test(text || "");
+
 const isInternshipType = (s: unknown) => /intern/i.test(String(s ?? ""));
 
 export const GOOGLE_JOBS_SEARCHES = ["product management intern", "product manager intern", "associate product manager"];
@@ -720,6 +733,9 @@ export async function fromGoogleJobs(): Promise<JobWithDetail[]> {
     for (const j of data.jobs_results ?? []) {
       const ext = j.detected_extensions ?? {};
       const apply = (j.apply_options ?? [])[0];
+      const agoText = String(ext.posted_at ?? (j.extensions ?? []).find((x: string) => /ago/i.test(x)) ?? "");
+      // "30+ days ago" or "2 months ago" means old; a missing date means unknown (kept, shown as undated).
+      if (agoTooOld(agoText)) continue;
       const job = makeJob({
         source: "googlejobs",
         rawId: shortHash(String(j.job_id ?? `${j.title}${j.company_name}`)),
@@ -728,7 +744,7 @@ export async function fromGoogleJobs(): Promise<JobWithDetail[]> {
         location: j.location || "India",
         isRemote: ext.work_from_home === true,
         url: apply?.link ?? j.share_link,
-        postedAt: agoToMs(ext.posted_at ?? (j.extensions ?? []).find((x: string) => /ago/i.test(x)) ?? ""),
+        postedAt: agoToMs(agoText),
         description: String(j.description ?? "").slice(0, 8000),
         level: isInternshipType(ext.schedule_type) ? "intern" : undefined,
         sourceLabel: apply?.title ? String(apply.title).replace(/^apply (on|via)\s+/i, "") : j.via?.replace(/^via\s+/i, ""),
@@ -755,6 +771,10 @@ export const JOOBLE_SEARCHES: [string, number][] = [
   ["product manager fresher", 1],
   ["product manager", 3],
   ["product owner", 1],
+  ["product fellow", 1],
+  ["apm program", 1],
+  ["product intern remote", 1],
+  ["associate product manager remote", 1],
 ];
 
 /** Jooble job search API (free key from https://jooble.org/api/about). Key: JOOBLE_API_KEY. */
@@ -830,7 +850,7 @@ export function dedupe(lists: JobWithDetail[][]) {
 }
 
 /** Remote job boards plus Adzuna (if keys are set). */
-export async function fetchExtraSources(opts: FetchOpts = {}) {
+export async function fetchExtraSources(opts: FetchOpts = {}, include: { adzuna?: boolean } = {}) {
   const tasks: { name: string; run: () => Promise<(JobWithDetail | null)[]> }[] = [];
   if (REMOTE_BOARDS.remotive) tasks.push({ name: "Remotive", run: () => fromRemotive(opts) });
   if (REMOTE_BOARDS.remoteok) tasks.push({ name: "Remote OK", run: () => fromRemoteOk(opts) });
@@ -840,7 +860,8 @@ export async function fetchExtraSources(opts: FetchOpts = {}) {
   if (REMOTE_BOARDS.workingnomads) tasks.push({ name: "Working Nomads", run: () => fromWorkingNomads(opts) });
   if (REMOTE_BOARDS.hackernews)
     tasks.push({ name: "Hacker News (Who is hiring)", run: async () => (await hackerNewsOnce(opts)).jobs });
-  tasks.push({ name: "Adzuna (India job sites)", run: () => fromAdzuna(opts) });
+  // The crawler runs Adzuna on its own slower schedule to stay inside the free quota.
+  if (include.adzuna !== false) tasks.push({ name: "Adzuna (India job sites)", run: () => fromAdzuna(opts) });
 
   const settled = await Promise.allSettled(tasks.map((t) => t.run()));
   const lists: JobWithDetail[][] = [];

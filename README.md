@@ -125,6 +125,10 @@ app/api/subscribe, unsubscribe, cron/digest   daily email
 
 - **Gemini free tier:** limited requests per minute and per day (see your limits in Google AI Studio). Each visitor gets 25 match checks a day by default (`MATCH_DAILY_LIMIT`). On the free tier, Google may use requests to improve its products; the site tells users this.
 - **Gmail:** about 500 emails a day. Past that, switch to Brevo or Resend SMTP by changing `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`.
+- **Adzuna:** the free plan is about 2,500 calls a month. The crawler refreshes Adzuna every 6 hours with 13 calls each time (about 1,560 a month). If you add searches in `lib/config.ts`, keep calls x 4 x 30 under 2,500.
+- **Google Jobs (SerpApi):** the free plan is about 100 searches a month and the crawler already uses about 90 (3 a day), so don't add more searches there without a paid plan.
+- **Listings that ask for money:** job search sites (Adzuna, Jooble, Google Jobs) sometimes carry them. `lib/scam.ts` drops listings that mention fees, deposits or "pay Rs..." (unless the text says there is no fee). Visitors can also press "Report" on a listing: it hides for them at once, and for everyone once `REPORT_THRESHOLD` (default 2) different visitors report it. Reports are logged in Redis under `reports:log`. To block a company by hand, add its name to `data/blocked-companies.ts` (this hides only its job-search-site listings, never its own career page).
+- **Undated and older roles:** job search sites often omit the posting date. Those roles are kept and shown under "Date not listed". Internships are kept for 60 days, other roles for 30.
 - **Remote OK and Remotive** ask that you link back to them and name them as the source. The site does both on every listing; keep it that way.
 
 ## 7. Ideas for v2 (let users decide)

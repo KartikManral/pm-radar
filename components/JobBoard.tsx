@@ -11,7 +11,7 @@ import {
   type ExpBucket,
   type Recency,
 } from "@/lib/filters";
-import { loadResume, type SavedResume } from "@/lib/storage";
+import { loadHidden, loadResume, saveHidden, type SavedResume } from "@/lib/storage";
 import { ago, BUCKET_LABEL, bucketFor, type Bucket } from "@/lib/time";
 import { LEVEL_LABELS, type Job, type Level } from "@/lib/types";
 import { prepUrl } from "@/lib/practice";
@@ -60,17 +60,23 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
   const [openMatch, setOpenMatch] = useState<string | null>(null);
   const [resume, setResume] = useState<SavedResume | null>(null);
   const [pendingMatch, setPendingMatch] = useState<string | null>(null);
+  const [hidden, setHidden] = useState<string[]>([]);
+  const [reporting, setReporting] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const resumeRef = useRef<HTMLDialogElement>(null);
   const subRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     setNow(Date.now());
     setResume(loadResume());
+    setHidden(loadHidden());
   }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const gone = new Set(hidden);
     return jobs.filter((j) => {
+      if (gone.has(j.id)) return false;
       if (!levels.includes(j.level)) return false;
       if (j.region === "remote-restricted" && !showRestricted) return false;
       if (place === "india" && j.region !== "india") return false;
@@ -80,7 +86,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
       if (q && !`${j.title} ${j.company} ${j.location}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [jobs, query, place, levels, showRestricted, exp, recency, now]);
+  }, [jobs, query, place, levels, showRestricted, exp, recency, now, hidden]);
 
   // Roles hidden only because they don't say how much experience they need.
   const hiddenNoExp = useMemo(() => {
@@ -97,7 +103,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
   }, [jobs, exp, levels, showRestricted, place, recency, now]);
 
   const groups = useMemo(() => {
-    const g: Record<Bucket, Job[]> = { today: [], week: [], earlier: [] };
+    const g: Record<Bucket, Job[]> = { today: [], week: [], earlier: [], undated: [] };
     for (const j of filtered) g[bucketFor(j.postedAt, now)].push(j);
     return (Object.keys(g) as Bucket[]).filter((b) => g[b].length).map((b) => ({ bucket: b, jobs: g[b] }));
   }, [filtered, now]);
@@ -106,6 +112,28 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
 
   function toggleLevel(l: Level) {
     setLevels((cur) => (cur.includes(l) ? (cur.length > 1 ? cur.filter((x) => x !== l) : cur) : [...cur, l]));
+  }
+
+  async function report(job: Job, reason: "fee" | "not-pm" | "expired") {
+    setReporting(null);
+    // Hide it for this visitor straight away; the server decides when to hide it for everyone.
+    setHidden((cur) => {
+      const next = [...cur, job.id];
+      saveHidden(next);
+      return next;
+    });
+    setOpenMatch((cur) => (cur === job.id ? null : cur));
+    setNotice("Thanks. That listing is hidden for you, and we'll hide it for everyone once others report it too.");
+    window.setTimeout(() => setNotice(null), 6000);
+    try {
+      await fetch("/api/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id, reason }),
+      });
+    } catch {
+      /* offline: it stays hidden on this device */
+    }
   }
 
   function checkMatch(id: string) {
@@ -259,7 +287,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
           {filtered.length} {filtered.length === 1 ? "role" : "roles"}
           <span className="count-sub">
             {" "}
-            posted in the last {recency === "1" ? "24 hours" : `${recency} days`}, updated{" "}
+            posted in the last {recency === "1" ? "24 hours" : recency === "30" ? "30 days (internships 60)" : `${recency} days`}, updated{" "}
             {ago(fetchedAt, now).replace("Just posted", "just now")}
           </span>
         </p>
@@ -270,6 +298,12 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
             <button className="link-btn" onClick={() => setExp("any")}>
               Show all experience levels
             </button>
+          </p>
+        )}
+
+        {notice && (
+          <p className="hint" role="status" aria-live="polite">
+            {notice}
           </p>
         )}
 
@@ -335,7 +369,32 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
                       )}
                       <span className="source">via {j.sourceLabel}</span>
                       <span className="when">{ago(j.postedAt, now)}</span>
+                      <button
+                        className="link-btn report-btn"
+                        onClick={() => setReporting((cur) => (cur === j.id ? null : j.id))}
+                        aria-expanded={reporting === j.id}
+                        aria-label={`Report ${j.title} at ${j.company}`}
+                      >
+                        Report
+                      </button>
                     </p>
+                    {reporting === j.id && (
+                      <div className="report-choices" role="group" aria-label="What is wrong with this listing?">
+                        <span className="muted small">What's wrong?</span>
+                        <button className="chip" onClick={() => report(j, "fee")}>
+                          Asks for money
+                        </button>
+                        <button className="chip" onClick={() => report(j, "not-pm")}>
+                          Not a product role
+                        </button>
+                        <button className="chip" onClick={() => report(j, "expired")}>
+                          Expired or broken link
+                        </button>
+                        <button className="link-btn" onClick={() => setReporting(null)}>
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                     </div>
                   </div>
                   <div className="job-actions">
@@ -389,7 +448,9 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
 
         <footer className="foot">
           <p>
-            Only roles posted in the last 30 days are shown. Listings come from public company job boards
+            Roles are shown for 30 days after posting (internships for 60). Some job sites don't give a posting date;
+            those roles are grouped under "Date not listed", so check the original post. Real jobs never ask you to
+            pay to apply: use "Report" on any listing that does. Listings come from public company job boards
             (Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Keka, Workday), remote job boards (Remotive,
             Remote OK, Himalayas, We Work Remotely, Jobicy, Working Nomads), Hacker News "Who is hiring?", Google
             Jobs (via SerpApi), Jooble and{" "}

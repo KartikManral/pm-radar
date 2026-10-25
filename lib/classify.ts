@@ -15,11 +15,36 @@ export function isProductRole(title: string): boolean {
 
 /** Only roles posted within this many days are shown. */
 export const MAX_AGE_DAYS = 30;
+/** Internship posts stay open longer, so they're kept for longer. */
+export const INTERN_MAX_AGE_DAYS = 60;
 
-export function isRecent(postedAt: number | null, now = Date.now()) {
-  if (!postedAt) return false; // no posting date: we can't tell how old it is
+/**
+ * Job search sites (not company career pages). They often leave out the posting
+ * date, so their undated roles are kept and shown as "Date not listed".
+ * Company career pages always have a date, so undated roles there are dropped.
+ */
+export const AGGREGATOR_SOURCES: ReadonlySet<string> = new Set(["adzuna", "jooble", "googlejobs"]);
+
+export type RecentOpts = { intern?: boolean; allowUndated?: boolean };
+
+export function isRecent(postedAt: number | null, now = Date.now(), opts: RecentOpts = {}) {
+  if (!postedAt) return Boolean(opts.allowUndated); // no posting date: only job search sites may omit it
+  const days = opts.intern ? INTERN_MAX_AGE_DAYS : MAX_AGE_DAYS;
   const age = now - postedAt;
-  return age < MAX_AGE_DAYS * 24 * 3_600_000 && age > -2 * 24 * 3_600_000;
+  return age < days * 24 * 3_600_000 && age > -2 * 24 * 3_600_000;
+}
+
+/** isRecent for a built job: internships get 60 days, job search sites may be undated. */
+export function isFresh(j: { postedAt: number | null; level: Level; source: string }, now = Date.now()) {
+  return isRecent(j.postedAt, now, { intern: j.level === "intern", allowUndated: AGGREGATOR_SOURCES.has(j.source) });
+}
+
+/** "Razorpay Software Pvt. Ltd." -> "razorpay": for matching a company across sources. */
+export function normCompany(s: string): string {
+  return String(s ?? "")
+    .toLowerCase()
+    .replace(/\b(pvt|private|ltd|limited|inc|llp|llc|technologies|technology|software|india|solutions)\b/g, "")
+    .replace(/[^a-z0-9]/g, "");
 }
 
 // ---------- Experience ----------

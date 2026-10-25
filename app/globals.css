@@ -1216,3 +1216,17 @@ legend {
     text-align: center;
   }
 }
+
+/* Report a listing */
+.report-btn {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.report-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}

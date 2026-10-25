@@ -12,10 +12,10 @@ export function ago(ms: number | null, now: number) {
   return `${m} mo ago`;
 }
 
-export type Bucket = "today" | "week" | "earlier";
+export type Bucket = "today" | "week" | "earlier" | "undated";
 
 export function bucketFor(ms: number | null, now: number): Bucket {
-  if (!ms) return "earlier";
+  if (!ms) return "undated";
   const diff = now - ms;
   if (diff < DAY) return "today";
   if (diff < 7 * DAY) return "week";
@@ -25,5 +25,6 @@ export function bucketFor(ms: number | null, now: number): Bucket {
 export const BUCKET_LABEL: Record<Bucket, string> = {
   today: "Today",
   week: "This week",
-  earlier: "Earlier this month",
+  earlier: "Earlier",
+  undated: "Date not listed",
 };

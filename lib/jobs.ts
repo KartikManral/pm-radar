@@ -1,7 +1,8 @@
 import { unstable_cache } from "next/cache";
 import { mockJobs } from "./mock";
 import { redis } from "./redis";
-import { isRecent } from "./classify";
+import { AGGREGATOR_SOURCES, isFresh, normCompany } from "./classify";
+import { BLOCKED_COMPANIES } from "../data/blocked-companies";
 import { fetchAllSources, fetchDescription, type SourceReport } from "./sources";
 import type { Job, JobWithDetail } from "./types";
 
@@ -26,7 +27,7 @@ type Loaded = {
   from: "crawler" | "live" | "mock";
 };
 
-async function load(fresh: boolean): Promise<Loaded> {
+async function loadRaw(fresh: boolean): Promise<Loaded> {
   if (MOCK_MODE) return { jobs: mockJobs(), report: [], fetchedAt: Date.now(), from: "mock" };
 
   // Normal case: the crawler (GitHub Actions) has saved the list to Redis.
@@ -37,8 +38,8 @@ async function load(fresh: boolean): Promise<Loaded> {
         redis.get<CrawlMeta>("jobs:meta"),
       ]);
       if (list && list.length) {
-        // Roles can cross the 30-day line between crawls.
-        const fresh = list.filter((j) => isRecent(j.postedAt));
+        // Roles can cross the 30-day (internships 60-day) line between crawls.
+        const fresh = list.filter((j) => isFresh(j));
         return { jobs: fresh, report: meta?.report ?? [], fetchedAt: meta?.crawledAt ?? Date.now(), meta, from: "crawler" };
       }
     } catch (e) {
@@ -51,8 +52,39 @@ async function load(fresh: boolean): Promise<Loaded> {
   return { jobs, report, fetchedAt: Date.now(), from: "live" };
 }
 
-/** Cached list; picks up a new crawl within about 10 minutes. */
-export const getJobsCached = unstable_cache(() => load(false), ["all-jobs-v3"], { revalidate: 600 });
+/**
+ * Hides listings people reported (and the ones that were reported as asking for
+ * money), plus companies on the blocklist. A blocked company only loses its
+ * listings from job search sites; its own career-page roles always stay.
+ */
+async function applyBlocks(jobs: JobWithDetail[]): Promise<JobWithDetail[]> {
+  let blockedJobs = new Set<string>();
+  const blockedCompanies = new Set(BLOCKED_COMPANIES.map(normCompany).filter(Boolean));
+  if (redis) {
+    try {
+      const [ids, companies] = await Promise.all([
+        redis.smembers("blocked:jobs") as Promise<string[]>,
+        redis.smembers("blocked:companies") as Promise<string[]>,
+      ]);
+      blockedJobs = new Set(ids);
+      for (const c of companies) blockedCompanies.add(c);
+    } catch (e) {
+      console.warn("[jobs] Couldn't read the blocked lists:", String(e).slice(0, 160));
+    }
+  }
+  if (!blockedJobs.size && !blockedCompanies.size) return jobs;
+  return jobs.filter(
+    (j) => !blockedJobs.has(j.id) && !(AGGREGATOR_SOURCES.has(j.source) && blockedCompanies.has(normCompany(j.company)))
+  );
+}
+
+async function load(fresh: boolean): Promise<Loaded> {
+  const r = await loadRaw(fresh);
+  return MOCK_MODE ? r : { ...r, jobs: await applyBlocks(r.jobs) };
+}
+
+/** Cached list; picks up a new crawl within about 10 minutes, or right away after a report. */
+export const getJobsCached = unstable_cache(() => load(false), ["all-jobs-v3"], { revalidate: 600, tags: ["jobs"] });
 
 /** Uncached; used by the daily email. */
 export const getJobsFresh = () => load(true);
