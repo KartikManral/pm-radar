@@ -775,6 +775,10 @@ export const JOOBLE_SEARCHES: [string, number][] = [
   ["apm program", 1],
   ["product intern remote", 1],
   ["associate product manager remote", 1],
+  ["associate product manager fresher", 1],
+  ["product manager trainee", 1],
+  ["product management apprentice", 1],
+  ["product intern work from home", 1],
 ];
 
 /** Jooble job search API (free key from https://jooble.org/api/about). Key: JOOBLE_API_KEY. */

@@ -162,7 +162,11 @@ async function main() {
     ),
   ]);
   const ENGINE_LABEL: Record<string, string> = { googlejobs: "Google Jobs", jooble: "Jooble", adzuna: "Adzuna (India job sites)" };
-  for (const e of engines) extra.report.push({ name: ENGINE_LABEL[e.name] ?? e.name, ok: e.note !== "no key", count: e.jobs.length });
+  for (const e of engines) {
+    const label = ENGINE_LABEL[e.name] ?? e.name;
+    // No key is a choice, not a failure.
+    extra.report.push({ name: e.note === "no key" ? `${label} (no key set)` : label, ok: true, count: e.jobs.length });
+  }
   console.log("Job search engines:", engines.map((e) => `${e.name}=${e.note === "no key" ? "no key set" : `${e.jobs.length} (${e.note})`}`).join(", "));
 
   // Company boards first, so the same role keeps its direct company link.

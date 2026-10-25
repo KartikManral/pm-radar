@@ -38,7 +38,7 @@ Open http://localhost:3000
 | What | Where | Env vars |
 |---|---|---|
 | Gemini API key | https://aistudio.google.com/apikey | `GEMINI_API_KEY` |
-| Adzuna key (Indian job sites, optional but adds most roles) | Sign up at https://developer.adzuna.com, then open your dashboard | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` |
+| Adzuna key (Indian job sites, optional, paid: see section 6) | Sign up at https://developer.adzuna.com, then open your dashboard | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` |
 | Redis (stores email subscribers) | Vercel dashboard > Storage > Marketplace > **Upstash for Redis** > connect to this project | filled in for you |
 | Gmail app password (sends emails) | Turn on 2-Step Verification, then https://myaccount.google.com/apppasswords | `SMTP_USER`, `SMTP_PASS` |
 | Cron secret | Any long random string, e.g. from https://1password.com/password-generator | `CRON_SECRET` |
@@ -125,7 +125,7 @@ app/api/subscribe, unsubscribe, cron/digest   daily email
 
 - **Gemini free tier:** limited requests per minute and per day (see your limits in Google AI Studio). Each visitor gets 25 match checks a day by default (`MATCH_DAILY_LIMIT`). On the free tier, Google may use requests to improve its products; the site tells users this.
 - **Gmail:** about 500 emails a day. Past that, switch to Brevo or Resend SMTP by changing `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`.
-- **Adzuna:** the free plan is about 2,500 calls a month. The crawler refreshes Adzuna every 6 hours with 13 calls each time (about 1,560 a month). If you add searches in `lib/config.ts`, keep calls x 4 x 30 under 2,500.
+- **Adzuna (optional, paid):** a new account only gets 25 test calls. Full access is a paid plan (about £8 a month for 5,000 calls a month and 500 a day, as of Oct 2026; check their site). Without the keys the crawler simply skips Adzuna. With them, the crawler refreshes it every 6 hours using 13 calls each time (about 1,560 a month). If you add searches in `lib/config.ts`, keep calls x 4 x 30 under your plan's monthly limit.
 - **Google Jobs (SerpApi):** the free plan is about 100 searches a month and the crawler already uses about 90 (3 a day), so don't add more searches there without a paid plan.
 - **Listings that ask for money:** job search sites (Adzuna, Jooble, Google Jobs) sometimes carry them. `lib/scam.ts` drops listings that mention fees, deposits or "pay Rs..." (unless the text says there is no fee). Visitors can also press "Report" on a listing: it hides for them at once, and for everyone once `REPORT_THRESHOLD` (default 2) different visitors report it. Reports are logged in Redis under `reports:log`. To block a company by hand, add its name to `data/blocked-companies.ts` (this hides only its job-search-site listings, never its own career page).
 - **Undated and older roles:** job search sites often omit the posting date. Those roles are kept and shown under "Date not listed". Internships are kept for 60 days, other roles for 30.

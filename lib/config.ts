@@ -79,10 +79,12 @@ export const REMOTE_BOARDS = {
 };
 
 // Adzuna: a job search API that gathers listings from many Indian job sites.
-// Free developer key at https://developer.adzuna.com (ADZUNA_APP_ID, ADZUNA_APP_KEY).
-// Free tier allows about 2,500 calls a month. Each refresh makes one call per
-// "page" below (13 calls). The crawler refreshes Adzuna every 6 hours, which is
-// about 1,560 calls a month. If you add searches, keep calls x 4 x 30 under 2,500.
+// Keys from https://developer.adzuna.com (ADZUNA_APP_ID, ADZUNA_APP_KEY). Optional and
+// paid: a new account only gets 25 test calls, and full access (about 5,000 calls a
+// month) is a paid plan. Without the keys the crawler skips Adzuna.
+// Each refresh makes one call per "page" below (13 calls). The crawler refreshes
+// Adzuna every 6 hours, about 1,560 calls a month. If you add searches, keep
+// calls x 4 x 30 under your plan's monthly limit.
 // "days" is how far back to look (internships stay open longer, so 60).
 export const ADZUNA_SEARCHES: { title: string; pages: number; days?: number }[] = [
   { title: "product manager", pages: 3 },
