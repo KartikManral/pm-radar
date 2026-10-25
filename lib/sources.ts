@@ -783,20 +783,22 @@ export const JOOBLE_SEARCHES: [string, number][] = [
 
 /**
  * Where a Jooble listing is. The search asks for India, but Jooble also returns
- * listings from other countries (especially for "remote" searches), so the place
- * must come from the listing itself. Never assume a listing is in India just
- * because we searched there: a US "[Remote]" role would show up as an India job.
+ * listings from other countries, and its place text can end in ", India" (the
+ * country we searched) even for "New York, NY". So the trailing "India" is
+ * ignored and the place before it decides: an Indian city or state keeps the
+ * role in India, anything else does not.
  */
 export function joobleWhere(title: string, rawLocation: unknown) {
-  const loc = String(rawLocation ?? "").trim();
+  const raw = String(rawLocation ?? "").trim();
+  const place = raw.replace(/[,\s]*\bindia\b\s*$/i, "").trim();
+  const inIndia = !place || regionFor(place, false) === "india"; // no place at all = the India we searched
   return {
-    // A listing with no place at all keeps "India", the place we searched.
-    location: loc || "India",
-    // Names an Indian place (or says nothing): an India role, even if it can be done remotely.
-    region: !loc || regionFor(loc, false) === "india" ? ("india" as const) : undefined,
+    // Show the real place; never invent ", India" for a foreign city.
+    location: inIndia ? raw || "India" : place,
+    region: inIndia ? ("india" as const) : undefined,
     // "[Remote] ..." in the title or "Remote" in the place. Otherwise regionFor decides:
     // remote roles in other countries become "remote-restricted"; on-site ones are dropped.
-    isRemote: /\bremote\b/i.test(`${title} ${loc}`),
+    isRemote: /\bremote\b/i.test(`${title} ${place}`),
   };
 }
 
@@ -806,6 +808,8 @@ export async function fromJooble(): Promise<JobWithDetail[]> {
   if (!key) return [];
   const out: JobWithDetail[] = [];
   let blocked = false;
+  // What Jooble sends, so the crawl log shows if places are being read wrongly.
+  const stats = { returned: 0, kept: 0, droppedPlaces: new Map<string, number>(), rawSamples: new Set<string>() };
   for (const [keywords, pages] of JOOBLE_SEARCHES) {
     for (let page = 1; page <= pages && !blocked; page++) {
       let data: any;
@@ -845,11 +849,22 @@ export async function fromJooble(): Promise<JobWithDetail[]> {
           level: isInternshipType(j.type) ? "intern" : undefined,
           sourceLabel: j.source || "Jooble",
         });
-        if (job) out.push(job);
+        stats.returned++;
+        if (stats.rawSamples.size < 8) stats.rawSamples.add(String(j.location ?? "(none)"));
+        if (job) {
+          out.push(job);
+          stats.kept++;
+        } else {
+          const k = String(where.location).slice(0, 40);
+          stats.droppedPlaces.set(k, (stats.droppedPlaces.get(k) ?? 0) + 1);
+        }
       }
       if (list.length === 0) break; // no more pages for this search
     }
   }
+  const top = [...stats.droppedPlaces].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, n]) => `${k} (${n})`);
+  console.log(`[jobs] Jooble returned ${stats.returned}, kept ${stats.kept}. Raw places seen: ${[...stats.rawSamples].join(" | ")}`);
+  console.log(`[jobs] Jooble dropped (place, count): ${top.join("; ") || "none"}`);
   // The same posting often comes back from several searches.
   const seen = new Set<string>();
   return out.filter((j) => (seen.has(j.id) ? false : (seen.add(j.id), true)));
