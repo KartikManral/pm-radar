@@ -21,7 +21,8 @@ export async function GET(req: Request) {
   if (!t) return NextResponse.json({ error: "SMTP not configured" }, { status: 503 });
 
   const now = Date.now();
-  const jobs = (await getJobsFresh()).jobs.map(toPublic);
+  // Roles that visitors reported as closed are left out of the email.
+  const jobs = (await getJobsFresh()).jobs.filter((j) => !j.closedReports).map(toPublic);
 
   // Remember when we first saw each job, so "new" means new to us,
   // even when a company posts with an old date.

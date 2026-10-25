@@ -35,6 +35,10 @@ export type Job = {
   /** Years of experience asked for, null when the post doesn't say. */
   expMin: number | null;
   expMax: number | null;
+  /** When the crawler first saw a role that has no posting date (used for "New today"). */
+  firstSeenAt?: number;
+  /** How many visitors reported this role as closed or its link as broken. */
+  closedReports?: number;
 };
 
 /** Server-side only: may carry a description for the AI match. */

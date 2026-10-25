@@ -5,6 +5,7 @@ import { PRODUCT_REPS_URL, SITE_NAME, type ExternalLink } from "@/lib/config";
 import {
   EXP_BUCKETS,
   expLabel,
+  isNewToday,
   matchesExperience,
   RECENCY,
   withinDays,
@@ -55,6 +56,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
   const [place, setPlace] = useState<Place>("for-you");
   const [levels, setLevels] = useState<Level[]>(LEVELS);
   const [showRestricted, setShowRestricted] = useState(false);
+  const [onlyNew, setOnlyNew] = useState(false);
   const [exp, setExp] = useState<ExpBucket>("any");
   const [recency, setRecency] = useState<Recency>("30");
   const [openMatch, setOpenMatch] = useState<string | null>(null);
@@ -72,7 +74,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
     setHidden(loadHidden());
   }, []);
 
-  const filtered = useMemo(() => {
+  const base = useMemo(() => {
     const q = query.trim().toLowerCase();
     const gone = new Set(hidden);
     return jobs.filter((j) => {
@@ -87,6 +89,9 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
       return true;
     });
   }, [jobs, query, place, levels, showRestricted, exp, recency, now, hidden]);
+
+  const newCount = useMemo(() => base.filter((j) => isNewToday(j, now)).length, [base, now]);
+  const filtered = useMemo(() => (onlyNew ? base.filter((j) => isNewToday(j, now)) : base), [base, onlyNew, now]);
 
   // Roles hidden only because they don't say how much experience they need.
   const hiddenNoExp = useMemo(() => {
@@ -249,6 +254,17 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
             </div>
           </div>
 
+          <div className="chips" role="group" aria-label="Freshness">
+            <button
+              aria-pressed={onlyNew}
+              className={onlyNew ? "chip chip-on" : "chip"}
+              onClick={() => setOnlyNew((v) => !v)}
+              title="Roles posted, or first seen by PM Radar, in the last 24 hours"
+            >
+              New today{newCount > 0 ? ` (${newCount})` : ""}
+            </button>
+          </div>
+
           <div className="selects">
             <label className="select">
               <span>Experience</span>
@@ -287,7 +303,10 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
           {filtered.length} {filtered.length === 1 ? "role" : "roles"}
           <span className="count-sub">
             {" "}
-            posted in the last {recency === "1" ? "24 hours" : recency === "30" ? "30 days (internships 60)" : `${recency} days`}, updated{" "}
+            {onlyNew
+              ? "new in the last 24 hours"
+              : `posted in the last ${recency === "1" ? "24 hours" : recency === "30" ? "30 days (internships 60)" : `${recency} days`}`}
+            , updated{" "}
             {ago(fetchedAt, now).replace("Just posted", "just now")}
           </span>
         </p>
@@ -309,7 +328,11 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
 
         {groups.length === 0 && (
           <div className="empty">
-            <p>No roles match these filters. Clear the search or turn on more levels.</p>
+            <p>
+              {onlyNew
+                ? 'No new roles in the last 24 hours with these filters. Turn off "New today" to see everything.'
+                : "No roles match these filters. Clear the search or turn on more levels."}
+            </p>
             <button
               className="btn btn-primary"
               onClick={() => {
@@ -318,6 +341,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
                 setPlace("for-you");
                 setExp("any");
                 setRecency("30");
+                setOnlyNew(false);
               }}
             >
               Reset filters
@@ -357,14 +381,17 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
                       <span className="job-loc">{j.location}</span>
                     </p>
                     <p className="job-meta">
-                      {j.postedAt != null && now - j.postedAt < 24 * 3_600_000 && (
-                        <span className="tag tag-new">New</span>
-                      )}
+                      {isNewToday(j, now) && <span className="tag tag-new">New</span>}
                       <span className={`tag tag-${j.level}`}>{LEVEL_LABELS[j.level]}</span>
                       {expLabel(j) && <span className="tag tag-exp">{expLabel(j)}</span>}
                       {j.region !== "india" && (
                         <span className={j.region === "remote" ? "tag tag-remote" : "tag tag-muted"}>
                           {j.region === "remote" ? "Remote, open to India" : "Remote, other countries"}
+                        </span>
+                      )}
+                      {(j.closedReports ?? 0) > 0 && (
+                        <span className="tag tag-muted" title="Someone reported this role as closed, or its link as broken">
+                          Reported closed{(j.closedReports ?? 0) > 1 ? ` x${j.closedReports}` : ""}
                         </span>
                       )}
                       <span className="source">via {j.sourceLabel}</span>
@@ -388,7 +415,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
                           Not a product role
                         </button>
                         <button className="chip" onClick={() => report(j, "expired")}>
-                          Expired or broken link
+                          Closed or broken link
                         </button>
                         <button className="link-btn" onClick={() => setReporting(null)}>
                           Cancel

@@ -69,3 +69,10 @@ export function withinDays(j: Job, days: number, now: number) {
   const limit = j.level === "intern" && days >= 30 ? INTERN_MAX_AGE_DAYS : days;
   return now - j.postedAt < limit * 24 * 3_600_000;
 }
+
+/** Posted, or (for roles with no posting date) first seen, in the last 24 hours. */
+export function isNewToday(j: Job, now: number) {
+  const DAY = 24 * 3_600_000;
+  if (j.postedAt != null) return now - j.postedAt < DAY && now - j.postedAt > -2 * DAY;
+  return j.firstSeenAt != null && now - j.firstSeenAt < DAY;
+}

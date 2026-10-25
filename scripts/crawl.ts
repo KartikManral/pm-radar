@@ -21,6 +21,7 @@ import {
 } from "../lib/sources";
 import { isFresh } from "../lib/classify";
 import { looksLikeFeeScam } from "../lib/scam";
+import { assignFirstSeen } from "../lib/seen";
 import { ycCandidates } from "../lib/yc";
 import type { JobWithDetail } from "../lib/types";
 import { KNOWN_BOARDS } from "../data/known-boards";
@@ -209,6 +210,20 @@ async function main() {
     process.exitCode = 1;
     return;
   }
+
+  // 5c. Remember when roles with no posting date first appeared, for "New today".
+  const seenInit = await redis.get("jobs:firstseen:init");
+  const prevSeen = ((await redis.hgetall<Record<string, number>>("jobs:firstseen")) ?? {}) as Record<string, number>;
+  const nextSeen = assignFirstSeen(jobs, prevSeen, !seenInit, now);
+  await redis.del("jobs:firstseen");
+  if (Object.keys(nextSeen).length) await redis.hset("jobs:firstseen", nextSeen);
+  await redis.set("jobs:firstseen:init", 1);
+
+  // Drop "reported closed" counts for roles that are no longer listed.
+  const closed = ((await redis.hgetall<Record<string, number>>("reports:closed")) ?? {}) as Record<string, number>;
+  const liveIds = new Set(jobs.map((j) => j.id));
+  const goneIds = Object.keys(closed).filter((id) => !liveIds.has(id));
+  if (goneIds.length) await redis.hdel("reports:closed", ...goneIds);
 
   // 6. Save: the list (no descriptions) and descriptions separately.
   const list = jobs.map(({ description: _d, ...rest }) => rest);

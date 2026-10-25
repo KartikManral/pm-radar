@@ -59,23 +59,25 @@ async function loadRaw(fresh: boolean): Promise<Loaded> {
  */
 async function applyBlocks(jobs: JobWithDetail[]): Promise<JobWithDetail[]> {
   let blockedJobs = new Set<string>();
+  let closed: Record<string, number> = {};
   const blockedCompanies = new Set(BLOCKED_COMPANIES.map(normCompany).filter(Boolean));
   if (redis) {
     try {
-      const [ids, companies] = await Promise.all([
+      const [ids, companies, closedCounts] = await Promise.all([
         redis.smembers("blocked:jobs") as Promise<string[]>,
         redis.smembers("blocked:companies") as Promise<string[]>,
+        redis.hgetall<Record<string, number>>("reports:closed"),
       ]);
       blockedJobs = new Set(ids);
+      closed = (closedCounts ?? {}) as Record<string, number>;
       for (const c of companies) blockedCompanies.add(c);
     } catch (e) {
       console.warn("[jobs] Couldn't read the blocked lists:", String(e).slice(0, 160));
     }
   }
-  if (!blockedJobs.size && !blockedCompanies.size) return jobs;
-  return jobs.filter(
-    (j) => !blockedJobs.has(j.id) && !(AGGREGATOR_SOURCES.has(j.source) && blockedCompanies.has(normCompany(j.company)))
-  );
+  return jobs
+    .filter((j) => !blockedJobs.has(j.id) && !(AGGREGATOR_SOURCES.has(j.source) && blockedCompanies.has(normCompany(j.company))))
+    .map((j) => (Number(closed[j.id]) > 0 ? { ...j, closedReports: Number(closed[j.id]) } : j));
 }
 
 async function load(fresh: boolean): Promise<Loaded> {

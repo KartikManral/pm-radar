@@ -32,7 +32,14 @@ export async function POST(req: Request) {
   const reportersKey = `report:job:${jobId}`;
   const reasonsKey = `report:reasons:${jobId}`;
   const added = await redis.sadd(reportersKey, who);
-  if (added) await redis.hincrby(reasonsKey, reason, 1); // the same visitor can't count twice
+  let closedChanged = false;
+  if (added) {
+    await redis.hincrby(reasonsKey, reason, 1); // the same visitor can't count twice
+    if (reason === "expired") {
+      await redis.hincrby("reports:closed", jobId, 1); // shown on the listing as "Reported closed"
+      closedChanged = true;
+    }
+  }
   await redis.expire(reportersKey, 60 * 60 * 24 * 60);
   await redis.expire(reasonsKey, 60 * 60 * 24 * 60);
   const count = await redis.scard(reportersKey);
@@ -55,6 +62,8 @@ export async function POST(req: Request) {
     const company = normCompany(job.company);
     if (feeVotes >= THRESHOLD && AGGREGATOR_SOURCES.has(job.source) && company && company !== "companynotlisted")
       await redis.sadd("blocked:companies", company);
+  }
+  if (hidden || closedChanged) {
     revalidateTag("jobs");
     revalidatePath("/");
   }
