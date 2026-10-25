@@ -160,7 +160,7 @@ async function main() {
   // 5a. Job search engines that index Internshala, LinkedIn, Naukri, Unstop...
   const engines = await Promise.all([
     throttled("googlejobs", 22, Boolean(process.env.SERPAPI_KEY), fromGoogleJobs),
-    throttled("jooble", 6, Boolean(process.env.JOOBLE_API_KEY), fromJooble, "-v3"), // v3: places read from the listing, refresh now
+    throttled("jooble", 6, Boolean(process.env.JOOBLE_API_KEY), fromJooble, "-v4"), // v4: log why listings are dropped, refresh now
     // Adzuna's free plan is about 2,500 calls a month, so it refreshes every 6 hours.
     throttled(
       "adzuna",

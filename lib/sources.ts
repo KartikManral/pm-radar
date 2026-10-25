@@ -809,7 +809,15 @@ export async function fromJooble(): Promise<JobWithDetail[]> {
   const out: JobWithDetail[] = [];
   let blocked = false;
   // What Jooble sends, so the crawl log shows if places are being read wrongly.
-  const stats = { returned: 0, kept: 0, droppedPlaces: new Map<string, number>(), rawSamples: new Set<string>() };
+  const stats = {
+    returned: 0,
+    kept: 0,
+    droppedPlaces: new Map<string, number>(),
+    rawSamples: new Set<string>(),
+    reasons: new Map<string, number>(),
+    titleSamples: new Set<string>(),
+    dateSamples: new Set<string>(),
+  };
   for (const [keywords, pages] of JOOBLE_SEARCHES) {
     for (let page = 1; page <= pages && !blocked; page++) {
       let data: any;
@@ -857,6 +865,18 @@ export async function fromJooble(): Promise<JobWithDetail[]> {
         } else {
           const k = String(where.location).slice(0, 40);
           stats.droppedPlaces.set(k, (stats.droppedPlaces.get(k) ?? 0) + 1);
+          // Why it was dropped, checked in the same order makeJob checks.
+          const intern = isInternshipType(j.type) || levelFor(title) === "intern";
+          let reason = "other";
+          if (!isProductRole(title)) {
+            reason = "not a product title";
+            if (stats.titleSamples.size < 25) stats.titleSamples.add(title.slice(0, 55));
+          } else if (!where.region && !regionFor(where.location, where.isRemote)) reason = "place outside India";
+          else if (!isRecent(toMs(j.updated), Date.now(), { intern, allowUndated: true })) {
+            reason = "too old";
+            if (stats.dateSamples.size < 6) stats.dateSamples.add(String(j.updated ?? "(none)"));
+          } else if (looksLikeFeeScam(`${title}\n${htmlToText(String(j.snippet ?? ""))}`)) reason = "asks for money";
+          stats.reasons.set(reason, (stats.reasons.get(reason) ?? 0) + 1);
         }
       }
       if (list.length === 0) break; // no more pages for this search
@@ -865,6 +885,11 @@ export async function fromJooble(): Promise<JobWithDetail[]> {
   const top = [...stats.droppedPlaces].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, n]) => `${k} (${n})`);
   console.log(`[jobs] Jooble returned ${stats.returned}, kept ${stats.kept}. Raw places seen: ${[...stats.rawSamples].join(" | ")}`);
   console.log(`[jobs] Jooble dropped (place, count): ${top.join("; ") || "none"}`);
+  console.log(
+    `[jobs] Jooble dropped because: ${[...stats.reasons].map(([k, n]) => `${k} ${n}`).join("; ") || "nothing dropped"}`
+  );
+  if (stats.titleSamples.size) console.log(`[jobs] Jooble titles dropped as not product roles: ${[...stats.titleSamples].join(" | ")}`);
+  if (stats.dateSamples.size) console.log(`[jobs] Jooble dates of listings dropped as too old: ${[...stats.dateSamples].join(" | ")}`);
   // The same posting often comes back from several searches.
   const seen = new Set<string>();
   return out.filter((j) => (seen.has(j.id) ? false : (seen.add(j.id), true)));
