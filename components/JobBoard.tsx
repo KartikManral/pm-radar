@@ -13,7 +13,7 @@ import {
   type Recency,
 } from "@/lib/filters";
 import { loadHidden, loadResume, saveHidden, type SavedResume } from "@/lib/storage";
-import { ago, BUCKET_LABEL, bucketFor, type Bucket } from "@/lib/time";
+import { ago, BUCKET_LABEL, bucketFor, whenLabel, type Bucket } from "@/lib/time";
 import { LEVEL_LABELS, type Job, type Level } from "@/lib/types";
 import { prepUrl } from "@/lib/practice";
 import MatchPanel from "./MatchPanel";
@@ -57,6 +57,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
   const [levels, setLevels] = useState<Level[]>(LEVELS);
   const [showRestricted, setShowRestricted] = useState(false);
   const [onlyNew, setOnlyNew] = useState(false);
+  const [showUndated, setShowUndated] = useState(false);
   const [exp, setExp] = useState<ExpBucket>("any");
   const [recency, setRecency] = useState<Recency>("30");
   const [openMatch, setOpenMatch] = useState<string | null>(null);
@@ -81,6 +82,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
       if (gone.has(j.id)) return false;
       if (!levels.includes(j.level)) return false;
       if (j.region === "remote-restricted" && !showRestricted) return false;
+      if (j.postedAt == null && !showUndated) return false; // age unknown: hidden unless asked for
       if (place === "india" && j.region !== "india") return false;
       if (place === "remote" && j.region === "india") return false;
       if (!matchesExperience(j, exp)) return false;
@@ -88,7 +90,9 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
       if (q && !`${j.title} ${j.company} ${j.location}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [jobs, query, place, levels, showRestricted, exp, recency, now, hidden]);
+  }, [jobs, query, place, levels, showRestricted, showUndated, exp, recency, now, hidden]);
+
+  const undatedCount = useMemo(() => jobs.filter((j) => j.postedAt == null).length, [jobs]);
 
   const newCount = useMemo(() => base.filter((j) => isNewToday(j, now)).length, [base, now]);
   const filtered = useMemo(() => (onlyNew ? base.filter((j) => isNewToday(j, now)) : base), [base, onlyNew, now]);
@@ -259,7 +263,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
               aria-pressed={onlyNew}
               className={onlyNew ? "chip chip-on" : "chip"}
               onClick={() => setOnlyNew((v) => !v)}
-              title="Roles posted, or first seen by PM Radar, in the last 24 hours"
+              title="Roles posted in the last 24 hours"
             >
               New today{newCount > 0 ? ` (${newCount})` : ""}
             </button>
@@ -292,6 +296,10 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
             <label className="check">
               <input type="checkbox" checked={showRestricted} onChange={(e) => setShowRestricted(e.target.checked)} />
               Include remote roles limited to other countries
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={showUndated} onChange={(e) => setShowUndated(e.target.checked)} />
+              Include roles with no posting date{undatedCount > 0 ? ` (${undatedCount})` : ""}
             </label>
             <button className="link-btn" onClick={downloadPdf} disabled={!filtered.length}>
               Download this list as PDF
@@ -395,7 +403,7 @@ export default function JobBoard({ jobs, fetchedAt, externalSearches }: Props) {
                         </span>
                       )}
                       <span className="source">via {j.sourceLabel}</span>
-                      <span className="when">{ago(j.postedAt, now)}</span>
+                      <span className="when">{whenLabel(j.postedAt, j.firstSeenAt, now)}</span>
                       <button
                         className="link-btn report-btn"
                         onClick={() => setReporting((cur) => (cur === j.id ? null : j.id))}

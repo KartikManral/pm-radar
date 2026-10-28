@@ -25,6 +25,24 @@ export const INTERN_MAX_AGE_DAYS = 60;
  */
 export const AGGREGATOR_SOURCES: ReadonlySet<string> = new Set(["adzuna", "jooble", "googlejobs"]);
 
+/**
+ * Roles with no posting date are dropped this many days after the crawler first
+ * saw them. Shorter than the dated limits, because the role was already of
+ * unknown age when we found it.
+ */
+export const UNDATED_MAX_AGE_DAYS = 7;
+export const UNDATED_INTERN_MAX_AGE_DAYS = 14;
+
+/** True for an undated role that has been listed too long to trust. */
+export function isUndatedStale(
+  j: { postedAt: number | null; firstSeenAt?: number; level: Level },
+  now = Date.now()
+) {
+  if (j.postedAt != null || j.firstSeenAt == null) return false;
+  const days = j.level === "intern" ? UNDATED_INTERN_MAX_AGE_DAYS : UNDATED_MAX_AGE_DAYS;
+  return now - j.firstSeenAt >= days * 24 * 3_600_000;
+}
+
 export type RecentOpts = { intern?: boolean; allowUndated?: boolean };
 
 export function isRecent(postedAt: number | null, now = Date.now(), opts: RecentOpts = {}) {

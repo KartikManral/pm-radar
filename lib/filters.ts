@@ -70,9 +70,9 @@ export function withinDays(j: Job, days: number, now: number) {
   return now - j.postedAt < limit * 24 * 3_600_000;
 }
 
-/** Posted, or (for roles with no posting date) first seen, in the last 24 hours. */
+/** Posted in the last 24 hours. Roles with no posting date are never "new": we can't know. */
 export function isNewToday(j: Job, now: number) {
   const DAY = 24 * 3_600_000;
-  if (j.postedAt != null) return now - j.postedAt < DAY && now - j.postedAt > -2 * DAY;
-  return j.firstSeenAt != null && now - j.firstSeenAt < DAY;
+  if (j.postedAt == null) return false;
+  return now - j.postedAt < DAY && now - j.postedAt > -2 * DAY;
 }

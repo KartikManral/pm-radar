@@ -22,7 +22,10 @@ export async function GET(req: Request) {
 
   const now = Date.now();
   // Roles that visitors reported as closed are left out of the email.
-  const jobs = (await getJobsFresh()).jobs.filter((j) => !j.closedReports).map(toPublic);
+  const jobs = (await getJobsFresh()).jobs
+    // Roles with no posting date can't be called new, so they stay out of the email.
+    .filter((j) => !j.closedReports && j.postedAt != null)
+    .map(toPublic);
 
   // Remember when we first saw each job, so "new" means new to us,
   // even when a company posts with an old date.

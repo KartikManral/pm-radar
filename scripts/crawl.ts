@@ -22,6 +22,7 @@ import {
 import { isFresh } from "../lib/classify";
 import { looksLikeFeeScam } from "../lib/scam";
 import { assignFirstSeen } from "../lib/seen";
+import { isUndatedStale } from "../lib/classify";
 import { ycCandidates } from "../lib/yc";
 import type { JobWithDetail } from "../lib/types";
 import { KNOWN_BOARDS } from "../data/known-boards";
@@ -218,6 +219,17 @@ async function main() {
   await redis.del("jobs:firstseen");
   if (Object.keys(nextSeen).length) await redis.hset("jobs:firstseen", nextSeen);
   await redis.set("jobs:firstseen:init", 1);
+
+  // 5d. Drop undated roles we have been listing for too long (age unknown, so likely closed).
+  // Their first-seen time stays saved above, so they don't come back as "new".
+  let expired = 0;
+  for (let i = jobs.length - 1; i >= 0; i--) {
+    if (isUndatedStale(jobs[i], now)) {
+      jobs.splice(i, 1);
+      expired++;
+    }
+  }
+  if (expired) console.log(`Dropped ${expired} undated roles first seen too long ago.`);
 
   // Drop "reported closed" counts for roles that are no longer listed.
   const closed = ((await redis.hgetall<Record<string, number>>("reports:closed")) ?? {}) as Record<string, number>;
